@@ -106,11 +106,15 @@ export function Admin({ token }: { token: string }) {
         ) : L.telegram ? (
           <>
             <p>Gruppo collegato. Cronache, risultati e promemoria arrivano lì.</p>
-            <button className="btn ghost small" disabled={busy} onClick={() => act(() => api(`admin/${token}/telegram-test`, { method: "POST" }), "Messaggio di prova inviato.")}>Invia un messaggio di prova</button>
+            <div className="row wrap-row">
+              <button className="btn ghost small" disabled={busy} onClick={() => act(() => api(`admin/${token}/telegram-test`, { method: "POST" }), "Messaggio di prova inviato.")}>Invia un messaggio di prova</button>
+              <button className="btn ghost small" disabled={busy} onClick={() => act(() => api(`admin/${token}/telegram`, { method: "POST" }))}>Collega un'altra chat</button>
+            </div>
+            {d.tgCode && <p style={{ marginTop: 10 }}>Scrivi nella nuova chat: <span className="linkbox">/collega {d.tgCode}</span></p>}
           </>
         ) : d.tgCode ? (
           <>
-            <p>Aggiungi {d.botName ? <strong>@{d.botName}</strong> : "il bot"} al gruppo degli amici, poi scrivi nel gruppo:</p>
+            <p>Aggiungi {d.botName ? <strong>@{d.botName}</strong> : "il bot"} al gruppo degli amici e scrivi nel gruppo il comando qui sotto. Per una prova puoi anche scriverlo in chat privata al bot.</p>
             <p className="linkbox" style={{ fontSize: 20 }}>/collega {d.tgCode}</p>
             <button className="btn ghost small" onClick={load}>Ho scritto il codice</button>
           </>
