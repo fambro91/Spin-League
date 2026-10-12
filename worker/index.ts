@@ -88,6 +88,10 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
     const upd = await body<any>(req);
     const msg = upd.message ?? upd.channel_post;
     const text: string = msg?.text ?? "";
+    if (/^\/(start|help|aiuto)\b/i.test(text) && msg?.chat?.id) {
+      await tgSend(env, String(msg.chat.id), "Ciao! Sono il bot di Spin League ⚽\nPer collegare questa chat a un campionato scrivi <b>/collega CODICE</b>. Il codice lo trovi nella pagina dell'organizzatore, sotto «Gruppo Telegram».");
+      return json({ ok: true });
+    }
     const match = text.match(/^\/collega(?:@\w+)?\s+([A-Z0-9]{6})/i);
     if (match && msg?.chat?.id) {
       const l = await env.DB.prepare("SELECT * FROM leagues WHERE tg_code = ?").bind(match[1].toUpperCase()).first<LeagueRow>();
