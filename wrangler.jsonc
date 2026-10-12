@@ -15,7 +15,7 @@
       "binding": "DB",
       "database_name": "spin-league",
       // SOSTITUIRE con l'ID del database D1 creato nella dashboard Cloudflare.
-      "database_id": "00000000-0000-0000-0000-000000000000"
+      "database_id": "603935b1-2a98-4e06-8649-65fed06b9850"
     }
   ],
   "ai": { "binding": "AI" },
