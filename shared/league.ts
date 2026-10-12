@@ -108,16 +108,16 @@ export function afterMatch(c: Club, s: ClubState, ch: Choices, goalsFor: number,
 }
 
 export const DAILY_EVENTS = [
-  { id: "tranquilla", label: "Settimana tranquilla", weight: 5 },
-  { id: "infortunio", label: "Infortunio", weight: 3 },
-  { id: "polemica", label: "Polemica arbitrale", weight: 2 },
-  { id: "festa", label: "Tifosi in festa", weight: 2 },
-  { id: "squalifica", label: "Squalifica", weight: 2 },
-  { id: "rissa", label: "Rissa nello spogliatoio", weight: 2 },
-  { id: "mecenate", label: "Mecenate", weight: 1 },
-  { id: "talento", label: "Talento dalla Primavera", weight: 1 },
-  { id: "fuga", label: "Il fuoriclasse vuole andare via", weight: 1 },
-  { id: "campo", label: "Squalifica del campo", weight: 1 },
+  { id: "tranquilla", icon: "😴", label: "Settimana tranquilla", weight: 5 },
+  { id: "infortunio", icon: "🩹", label: "Infortunio", weight: 3 },
+  { id: "polemica", icon: "🟨", label: "Polemica arbitrale", weight: 2 },
+  { id: "festa", icon: "🎉", label: "Tifosi in festa", weight: 2 },
+  { id: "squalifica", icon: "🚫", label: "Squalifica", weight: 2 },
+  { id: "rissa", icon: "🥊", label: "Rissa nello spogliatoio", weight: 2 },
+  { id: "mecenate", icon: "💰", label: "Mecenate", weight: 1 },
+  { id: "talento", icon: "🌱", label: "Talento dalla Primavera", weight: 1 },
+  { id: "fuga", icon: "✈️", label: "Il fuoriclasse vuole andare via", weight: 1 },
+  { id: "campo", icon: "🔒", label: "Squalifica del campo", weight: 1 },
 ];
 
 const EVENT_REPS: Reparto[] = ["por", "dif", "cen", "att", "pan"];

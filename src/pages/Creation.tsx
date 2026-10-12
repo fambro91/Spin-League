@@ -2,15 +2,19 @@ import { useState } from "react";
 import { api } from "../api";
 import { WHEELS } from "../../shared/wheels";
 import { WheelCanvas, type SpinTarget } from "../components/WheelCanvas";
+import { Confetti } from "../components/Confetti";
+import { MuteButton } from "../components/MuteButton";
+import { ding, unlockAudio } from "../feedback";
 import type { SpinRecord } from "../../shared/types";
 
 type Props = { token: string; creation: { done: SpinRecord[]; next: string | null; remaining: number; streak: number; luckyCount: number }; onFinished: () => void };
+type SpinRes = { record: SpinRecord; combo: boolean; next: string | null; remaining: number; status: string; streak: number };
 
 export function Creation({ token, creation, onFinished }: Props) {
   const [wheelId, setWheelId] = useState<string>(creation.next ?? "citta");
   const [target, setTarget] = useState<SpinTarget | null>(null);
   const [phase, setPhase] = useState<"ready" | "spinning" | "revealed">("ready");
-  const [res, setRes] = useState<{ record: SpinRecord; combo: boolean; next: string | null; remaining: number; status: string; streak: number } | null>(null);
+  const [res, setRes] = useState<SpinRes | null>(null);
   const [done, setDone] = useState<SpinRecord[]>(creation.done);
   const [streak, setStreak] = useState(creation.streak);
   const [remaining, setRemaining] = useState(creation.remaining);
@@ -20,9 +24,10 @@ export function Creation({ token, creation, onFinished }: Props) {
   const gold = wheelId === "lucky";
 
   const spin = async () => {
+    unlockAudio();
     setErr(null); setPhase("spinning");
     try {
-      const r = await api(`me/${token}/spin`, { method: "POST" });
+      const r: SpinRes = await api(`me/${token}/spin`, { method: "POST" });
       setRes(r);
       setTarget({ index: r.record.index, key: Date.now() });
     } catch (e: any) { setErr(e.message); setPhase("ready"); }
@@ -30,6 +35,7 @@ export function Creation({ token, creation, onFinished }: Props) {
   const revealed = () => {
     if (!res) return;
     setPhase("revealed");
+    ding(res.record.lucky || gold);
     setDone((d) => [...d, res.record]);
     setStreak(res.streak);
     setRemaining(res.remaining);
@@ -42,34 +48,52 @@ export function Creation({ token, creation, onFinished }: Props) {
   };
 
   const total = done.length + remaining;
-  const luckyCounts = wheel.segments.some((s) => s.lucky);
+  const counts = wheel.segments.some((s) => s.lucky);
 
   return (
     <div className="stage">
-      <div className="progress" aria-label={`Ruota ${done.length + 1} di circa ${total}`}><div style={{ width: `${(100 * done.length) / Math.max(1, total)}%` }} /></div>
-      <div className="emoji" style={{ marginTop: 14 }} aria-hidden>{wheel.emoji}</div>
-      <div className="pill" style={gold ? { color: "#ffb31a", borderColor: "#ffb31a" } : undefined}>{wheel.title}</div>
-      <div className="subtitle">{wheel.subtitle}</div>
-      <div className="result" aria-live="polite">{phase === "revealed" && res ? res.record.label : phase === "spinning" ? "…" : " "}</div>
-      <div className="note">{phase === "revealed" && res ? (res.record.note ?? (res.record.lucky ? "★ Spin fortunato" : "")) : ""}</div>
+      <div className="stage-bar">
+        <span className="stage-count">{Math.min(done.length + 1, total)}/{total}</span>
+        <span className="stage-title">Crea il tuo club</span>
+        <MuteButton />
+      </div>
+      <div className="progress" aria-hidden><div style={{ width: `${(100 * done.length) / Math.max(1, total)}%` }} /></div>
+
+      <div className={`question ${gold ? "gold" : ""}`}>
+        <span className="q-emoji" aria-hidden>{wheel.emoji}</span>
+        <div>
+          <div className="q-title">{wheel.title}</div>
+          <div className="q-text">{wheel.question ?? wheel.subtitle}</div>
+        </div>
+      </div>
 
       <div className={`wheel-box ${gold ? "gold" : ""}`}>
-        <WheelCanvas wheel={wheel} target={target} onDone={revealed} gold={gold} />
+        <WheelCanvas wheel={wheel} target={target} onDone={revealed} gold={gold} hub={wheel.emoji} />
+      </div>
+
+      <div className="result" aria-live="polite">{phase === "revealed" && res ? res.record.label : phase === "spinning" ? "…" : " "}</div>
+      <div className="note-row">
+        {phase === "revealed" && res?.record.lucky && <span className="badge-lucky">★ Spin fortunato</span>}
+        {phase === "revealed" && res?.record.note && <span className="note">{res.record.note}</span>}
       </div>
 
       {err && <div className="error">{err}</div>}
-      {phase === "ready" && <button className="btn" onClick={spin}>{gold ? "Gira la ruota dorata" : "Gira la ruota"}</button>}
-      {phase === "spinning" && <button className="btn" disabled>Gira…</button>}
-      {phase === "revealed" && !showCombo && <button className="btn" onClick={next}>{res?.next ? "Prossima ruota" : "Dai un nome al club"}</button>}
+      <div className="stage-actions">
+        {phase === "ready" && <button className="btn pulse" onClick={spin}>{gold ? "Gira la ruota dorata" : "Gira la ruota"}</button>}
+        {phase === "spinning" && <button className="btn" disabled>Gira…</button>}
+        {phase === "revealed" && !showCombo && <button className="btn" onClick={next}>{res?.next ? "Prossima ruota" : "Dai un nome al club"}</button>}
+      </div>
 
-      <div className="streak" aria-label={`Spin fortunati di fila: ${streak} su 3`}>
-        {luckyCounts || streak > 0 ? <>Lucky Streak {[0, 1, 2].map((i) => <i key={i} className={i < streak ? "on" : ""} />)}</> : <span>&nbsp;</span>}
+      <div className="streak-card" aria-label={`Spin fortunati di fila: ${streak} su 3`}>
+        <span>Lucky Streak</span>
+        <span className="streak-dots">{[0, 1, 2].map((i) => <i key={i} className={i < streak ? "on" : ""} />)}</span>
+        <span className="small muted">{counts ? "3 di fila = ruota dorata" : "questa ruota non conta"}</span>
       </div>
 
       {done.length > 0 && (
-        <details style={{ marginTop: 22, width: "100%", maxWidth: 400, textAlign: "left" }}>
-          <summary className="muted small" style={{ cursor: "pointer" }}>Ruote già girate ({done.length})</summary>
-          <ul className="small" style={{ paddingLeft: 18 }}>
+        <details className="recap">
+          <summary className="muted small">Ruote già girate ({done.length})</summary>
+          <ul className="small">
             {done.map((r, i) => <li key={i}>{WHEELS[r.wheel]?.title}: <strong>{r.label}</strong>{r.lucky ? " ★" : ""}{r.note ? ` — ${r.note}` : ""}</li>)}
           </ul>
         </details>
@@ -77,10 +101,11 @@ export function Creation({ token, creation, onFinished }: Props) {
 
       {showCombo && (
         <div className="combo" role="dialog" aria-label="Combo">
+          <Confetti />
           <div>
             <div className="big">COMBO</div>
             <p style={{ fontFamily: "var(--body)", color: "var(--chalk)", fontSize: 18, margin: "14px 0 22px" }}>Tre spin fortunati di fila: si sblocca la ruota dorata.</p>
-            <button className="btn" onClick={next}>Vai alla ruota dorata</button>
+            <button className="btn pulse" onClick={next}>Vai alla ruota dorata</button>
           </div>
         </div>
       )}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, copy, fmtDate, playerLink, store } from "../api";
+import { Logo } from "../components/Logo";
 
 export function Admin({ token }: { token: string }) {
   const [d, setD] = useState<any>(null);
@@ -31,8 +32,8 @@ export function Admin({ token }: { token: string }) {
   const partOf = (pid: string) => d.participants.find((x: any) => x.playerId === pid);
   const statusOf = (pid: string) => {
     const part = partOf(pid);
-    if (!part) return { label: "non ha ancora aperto il link", ready: false };
-    return part.status === "ready" ? { label: "club pronto", ready: true } : { label: "sta girando le ruote", ready: false };
+    if (!part) return { label: "non ha ancora aperto il link", ready: false, dot: "no" };
+    return part.status === "ready" ? { label: "club pronto", ready: true, dot: "ok" } : { label: "sta girando le ruote", ready: false, dot: "mid" };
   };
   const readyCount = d.players.filter((p: any) => statusOf(p.id).ready).length;
   const allReady = readyCount === d.players.length && d.players.length > 0;
@@ -51,7 +52,7 @@ export function Admin({ token }: { token: string }) {
         const lk = linkFor(p);
         return (
           <div key={p.id} className="player-row">
-            <div className="grow"><strong>{p.name}</strong>{p.id === me.id ? " (tu)" : ""}<div className="small muted">{s.ready ? "✅ " : "⏳ "}{s.label}</div></div>
+            <div className="grow"><strong>{p.name}</strong>{p.id === me.id ? " (tu)" : ""}<div className="small muted"><span className={`status-dot ${s.dot}`} />{s.label}</div></div>
             <div className="row">
               {lk ? (
                 <>
@@ -84,7 +85,10 @@ export function Admin({ token }: { token: string }) {
       ) : d.tgCode ? (
         <>
           <p>Aggiungi {d.botName ? <strong>@{d.botName}</strong> : "il bot"} al gruppo degli amici e scrivi nel gruppo:</p>
-          <p className="linkbox" style={{ fontSize: 20 }}>/collega {d.tgCode}</p>
+          <div className="row" style={{ marginBottom: 10 }}>
+            <p className="linkbox grow" style={{ fontSize: 20, margin: 0 }}>/collega {d.tgCode}</p>
+            <button className="btn ghost small" onClick={async () => { const ok = await copy(`/collega ${d.tgCode}`); setMsg(ok ? "Comando copiato: incollalo nel gruppo." : `/collega ${d.tgCode}`); }}>Copia</button>
+          </div>
           <button className="btn ghost small" onClick={load}>Fatto, controlla</button>
         </>
       ) : (
@@ -98,10 +102,11 @@ export function Admin({ token }: { token: string }) {
 
   return (
     <div className="wrap">
-      <div className="row spread" style={{ marginTop: 8 }}>
-        <span className="small muted">Pagina organizzatore · salvala nei preferiti</span>
+      <div className="app-head" style={{ marginTop: 8 }}>
+        <div className="brand"><Logo size={34} wordmark={false} />Organizzatore</div>
         {myLink && <a className="btn small" href={`#/p/${myLink}`}>Il mio club</a>}
       </div>
+      <p className="small muted" style={{ margin: "4px 0 0" }}>Salva questa pagina nei preferiti: serve per gestire il campionato.</p>
       <h1 style={{ marginTop: 10 }}>{L.name}</h1>
       <p className="muted">Stagione {L.season} · {L.status === "setup" ? "preparazione" : L.status === "running" ? `giornata ${L.matchdayPlayed} di ${L.totalMatchdays} giocata` : "conclusa"}</p>
       {err && <div className="error">{err}</div>}
@@ -110,7 +115,7 @@ export function Admin({ token }: { token: string }) {
       {L.status === "setup" && (
         <ol className="steps">
           <li className={`panel step-card ${d.players.length > 1 ? "done" : ""}`}>
-            <h2>Invita gli amici</h2>
+            <h2>Invita gli amici <span className="small muted">({readyCount}/{d.players.length} pronti)</span></h2>
             <p className="small muted">Aggiungi un amico, poi premi "Invia link": ognuno crea il suo club dal proprio telefono.</p>
             <form className="row" style={{ marginBottom: 6 }} onSubmit={(e) => { e.preventDefault(); const n = newName.trim(); if (!n) return; act(async () => { const r = await api(`admin/${token}/players`, { body: { name: n } }); saveLink(r.id, r.token); setNewName(""); }, `${n} aggiunto. Premi "Invia link" per mandarglielo.`); }}>
               <input type="text" className="grow" placeholder="Nome dell'amico" value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={24} />
@@ -143,7 +148,7 @@ export function Admin({ token }: { token: string }) {
         <>
           <div className="panel cta-card">
             <h2>Giornata {L.nextMatchday}</h2>
-            <p>Si gioca il {fmtDate(L.nextMatchDate)} alle 21:00, in automatico.</p>
+            <p>Si gioca il {fmtDate(L.nextMatchDate)} alle 21:00, in automatico. Formazioni pronte: <strong>{d.participants.filter((x: any) => !x.isCpu && x.confirmed).length}/{d.participants.filter((x: any) => !x.isCpu).length}</strong></p>
             <ul className="checklist" style={{ marginBottom: 12 }}>
               {d.participants.filter((x: any) => !x.isCpu).map((x: any) => (
                 <li key={x.id}><span className="ck">{x.confirmed ? "✅" : "⏳"}</span><span>{x.owner}: {x.confirmed ? "formazione pronta" : "deve ancora scegliere"}</span></li>

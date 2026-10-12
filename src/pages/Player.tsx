@@ -5,6 +5,7 @@ import { Identity } from "./Identity";
 import { Serata, seenKey } from "./Serata";
 import { Bar, Crest, Form, Radar } from "../components/ClubBits";
 import { Replay } from "../components/Replay";
+import { Logo } from "../components/Logo";
 import { MODULI, REPARTI, REPARTO_LABEL, type Reparto } from "../../shared/types";
 import { marketCost, marketIncome } from "../../shared/league";
 
@@ -43,9 +44,10 @@ export function Player({ token }: { token: string }) {
   if (!d) return <div className="wrap">{err ? <div className="error">{err}</div> : <p>Carico…</p>}</div>;
   const mine = d.mine;
   if (mine?.status === "creating") return <Creation token={token} creation={mine.creation} onFinished={load} />;
-  if (mine?.status === "identity") return <Identity token={token} draft={mine.creation.draft} onDone={load} />;
+  if (mine?.status === "identity") return <Identity token={token} draft={mine.creation.draft} seed={mine.id} onDone={load} />;
 
   const clubsById = new Map<string, any>(d.clubs.map((c: any) => [c.id, c]));
+  const unseenMd = d.league.matchdayPlayed > Number(store.get(seenKey(d.league.id, d.league.season)) ?? 0);
   const adminToken = store.get(`spin:admin:${d.league.id}`);
   const ctx: Ctx = {
     d, token, reload: load, clubsById, openClub: setClubModal, openMatch: setMatchModal, openSerata: setSerata,
@@ -55,10 +57,11 @@ export function Player({ token }: { token: string }) {
   return (
     <>
       <div className="wrap">
-        <div className="row spread" style={{ marginTop: 6 }}>
-          <div className="small muted">{d.league.name} · stagione {d.league.season} · {d.player.name}</div>
-          {adminToken && <a className="small" href={`#/admin/${adminToken}`}>Gestisci campionato</a>}
+        <div className="app-head">
+          <div className="brand"><Logo size={34} wordmark={false} />Spin League</div>
+          {adminToken && <a className="btn ghost small" href={`#/admin/${adminToken}`}>Gestisci</a>}
         </div>
+        <div className="small muted" style={{ margin: "2px 0 4px" }}>{d.league.name} · stagione {d.league.season} · {d.player.name}</div>
         {err && <div className="error">{err}</div>}
         {toast && <div className="ok" role="status">{toast}</div>}
         {!mine && <div className="panel"><h2>Stagione in corso</h2><p>Questa stagione è partita senza il tuo club. Potrai crearne uno alla prossima.</p></div>}
@@ -69,7 +72,7 @@ export function Player({ token }: { token: string }) {
         {tab === "notizie" && <NewsTab {...ctx} />}
       </div>
       <div className="tabbar"><nav>
-        {TABS.map((t) => <button key={t.id} aria-current={tab === t.id ? "page" : undefined} onClick={() => setTab(t.id)}><span className="ico" aria-hidden>{t.ico}</span>{t.label}</button>)}
+        {TABS.map((t) => <button key={t.id} aria-current={tab === t.id ? "page" : undefined} onClick={() => setTab(t.id)}><span className="ico" aria-hidden>{t.ico}</span>{t.label}{t.id === "oggi" && unseenMd ? <span className="live">NUOVA</span> : null}</button>)}
       </nav></div>
       {clubModal && <ClubModal club={clubsById.get(clubModal)} onClose={() => setClubModal(null)} />}
       {matchModal && <MatchModal token={token} id={matchModal} clubsById={clubsById} onClose={() => setMatchModal(null)} />}
@@ -122,7 +125,7 @@ function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTacti
         <div className="panel cta-card">
           <h2>La serata della giornata {unseen}</h2>
           <p>Gli highlights della tua partita, gli altri risultati, le ruote degli eventi e la classifica aggiornata.</p>
-          <button className="btn block" onClick={() => openSerata(unseen)}>Guarda la serata</button>
+          <button className="btn block pulse" onClick={() => openSerata(unseen)}>Guarda la serata</button>
         </div>
       )}
 
@@ -140,8 +143,9 @@ function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTacti
             <div><div className="row spread small"><span>Condizione</span><span>{st.cond}</span></div><Bar value={st.cond} color={st.cond < 60 ? "#e0343f" : "#7ee08a"} /></div>
             <div><div className="row spread small"><span>Morale</span><span>{st.morale}</span></div><Bar value={st.morale} color="#8fd3ff" /></div>
           </div>
-          {st.modifiers?.length > 0 && <p className="small">{st.modifiers.map((m: any, i: number) => <span key={i} className="tag">{m.label}: {REPARTO_LABEL[m.rep as Reparto]} {m.delta}</span>)}</p>}
-          <button className={`btn block ${confirmed ? "ghost" : ""}`} onClick={openTactics}>{confirmed ? "Modifica la formazione" : "Prepara la formazione"}</button>
+          {st.modifiers?.length > 0 && <p className="warn">⚠️ {st.modifiers.map((m: any) => `${m.label} (${REPARTO_LABEL[m.rep as Reparto]} ${m.delta})`).join(" · ")}</p>}
+          {st.campoSqualificato && <p className="warn">⚠️ Campo squalificato: niente fattore campo nella prossima in casa</p>}
+          <button className={`btn block ${confirmed ? "ghost" : unseen ? "" : "pulse"}`} onClick={openTactics}>{confirmed ? "Modifica la formazione" : "Prepara la formazione"}</button>
           {!confirmed && <p className="small muted" style={{ marginTop: 8 }}>Hai tempo fino alle 21:00. Se non scegli, giochi con le scelte dell'ultima volta.</p>}
         </div>
       )}
@@ -231,9 +235,13 @@ const TALK_INFO = [
   { id: "calmare", label: "Calmare", info: "Riporta il morale verso 50." },
 ];
 
+type Cat = "modulo" | "atteggiamento" | "turnover" | "discorso";
+
 function TacticsSheet({ d, token, onClose }: { d: any; token: string; onClose: (ok: boolean) => void }) {
   const st = d.mine.state, club = d.mine.club;
   const [c, setC] = useState(st.choices);
+  const [open, setOpen] = useState<Cat | null>(null);
+  const [seen, setSeen] = useState<Set<Cat>>(new Set());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const pref = club.preferredModule;
@@ -241,28 +249,51 @@ function TacticsSheet({ d, token, onClose }: { d: any; token: string; onClose: (
     setBusy(true); setErr(null);
     try { await api(`me/${token}/choices`, { body: c }); onClose(true); } catch (e: any) { setErr(e.message); setBusy(false); }
   };
-  const Tiles = ({ items, value, onPick }: { items: { id: string; label: string; info: string }[]; value: string; onPick: (v: any) => void }) => (
-    <div className="tiles">{items.map((x) => <button type="button" key={x.id} className="tile" aria-pressed={value === x.id} onClick={() => onPick(x.id)}><strong>{x.label}</strong><span>{x.info}</span></button>)}</div>
-  );
+  const modItems = MODULI.map((m) => ({ id: m, label: m + (pref === m ? " ★" : ""), info: MOD_INFO[m] }));
+  const cats: { id: Cat; ico: string; title: string; sub: string; items: { id: string; label: string; info: string }[]; help?: string }[] = [
+    { id: "modulo", ico: "📐", title: "Modulo", sub: "Come si dispone la squadra", items: modItems, help: pref === "tutti" ? "Il tuo allenatore rende bene con qualsiasi modulo." : `Il modulo preferito (★ ${pref}) dà +2 ad Attacco, Centrocampo e Difesa.` },
+    { id: "atteggiamento", ico: "🧭", title: "Atteggiamento", sub: "Come affrontare la partita", items: ATT_INFO },
+    { id: "turnover", ico: "🔄", title: "Turnover", sub: "Gestisci le energie", items: TURN_INFO, help: st.cond < 60 ? "Squadra stanca: conviene far riposare qualcuno." : "Ogni partita costa 10 di condizione, ne recuperi 6 al giorno." },
+    { id: "discorso", ico: "💬", title: "Discorso", sub: "Influenza il morale", items: TALK_INFO },
+  ];
+  const labelOf = (cat: Cat) => cats.find((x) => x.id === cat)!.items.find((i) => i.id === c[cat])?.label ?? c[cat];
+  const cur = open ? cats.find((x) => x.id === open)! : null;
   return (
     <div className="modal" role="dialog" aria-label="Prepara la formazione">
       <div className="wrap" style={{ paddingBottom: 0 }}>
-        <div className="row spread"><h2 style={{ margin: "8px 0" }}>Prepara la formazione</h2><button className="btn ghost small" onClick={() => onClose(false)}>Chiudi</button></div>
-        <p className="small muted">Condizione {st.cond} · morale {st.morale} · allenatore {club.coachLabel}</p>
-        <div className="sheet-section">
-          <h3>Modulo</h3>
-          <p className="small muted">{pref === "tutti" ? "Il tuo allenatore rende bene con qualsiasi modulo." : `Il modulo preferito dell'allenatore (★ ${pref}) dà +2 ad Attacco, Centrocampo e Difesa.`}</p>
-          <Tiles items={MODULI.map((m) => ({ id: m, label: m + (pref === m ? " ★" : ""), info: MOD_INFO[m] }))} value={c.modulo} onPick={(v) => setC({ ...c, modulo: v })} />
+        <div className="row spread">
+          <h2 style={{ margin: "8px 0" }}>{cur ? cur.title : "Prepara la formazione"}</h2>
+          {cur ? <button className="btn ghost small" onClick={() => setOpen(null)}>Indietro</button> : <button className="btn ghost small" onClick={() => onClose(false)}>Chiudi</button>}
         </div>
-        <div className="sheet-section"><h3>Atteggiamento</h3><Tiles items={ATT_INFO} value={c.atteggiamento} onPick={(v) => setC({ ...c, atteggiamento: v })} /></div>
-        <div className="sheet-section">
-          <h3>Turnover</h3>
-          <p className="small muted">{st.cond < 60 ? "Squadra stanca: conviene far riposare qualcuno." : "Ogni partita costa 10 punti di condizione, ne recuperi 6 al giorno."}</p>
-          <Tiles items={TURN_INFO} value={c.turnover} onPick={(v) => setC({ ...c, turnover: v })} />
-        </div>
-        <div className="sheet-section"><h3>Discorso nello spogliatoio</h3><Tiles items={TALK_INFO} value={c.discorso} onPick={(v) => setC({ ...c, discorso: v })} /></div>
-        {err && <div className="error">{err}</div>}
-        <div className="sheet-foot"><button className="btn block" disabled={busy} onClick={save}>{busy ? "Salvo…" : "Conferma la formazione"}</button></div>
+        {!cur && (
+          <>
+            <div className="progress" style={{ maxWidth: "none", margin: "4px 0 6px" }}><div style={{ width: `${(seen.size / 4) * 100}%` }} /></div>
+            <p className="small muted">{seen.size}/4 controllate · condizione {st.cond} · morale {st.morale} · {club.coachName ?? "allenatore"} ({club.coachLabel})</p>
+            <div className="cat-grid">
+              {cats.map((x) => (
+                <button key={x.id} className={`cat ${seen.has(x.id) ? "done" : ""}`} onClick={() => { setOpen(x.id); setSeen(new Set([...seen, x.id])); }}>
+                  <span className="ico" aria-hidden>{x.ico}</span>
+                  <strong>{x.title}</strong>
+                  <span className="small muted">{x.sub}</span>
+                  <span className="val">{labelOf(x.id)}</span>
+                </button>
+              ))}
+            </div>
+            {err && <div className="error" style={{ marginTop: 12 }}>{err}</div>}
+            <div className="sheet-foot"><button className="btn block pulse" disabled={busy} onClick={save}>{busy ? "Salvo…" : "Conferma la formazione"}</button></div>
+          </>
+        )}
+        {cur && (
+          <div className="sheet-section">
+            {cur.help && <p className="small muted">{cur.help}</p>}
+            <div className="tiles">{cur.items.map((x) => (
+              <button type="button" key={x.id} className="tile" aria-pressed={c[cur.id] === x.id} onClick={() => { setC({ ...c, [cur.id]: x.id }); setOpen(null); }}>
+                <strong>{x.label}</strong><span>{x.info}</span>
+              </button>
+            ))}</div>
+            <p className="small muted" style={{ marginTop: 10 }}>Tocca un'opzione per sceglierla e tornare al riepilogo.</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -345,7 +376,7 @@ function ClubCard({ c, state }: { c: any; state?: any }) {
       <Radar ratings={ratings} compare={state ? c.ratings : c.initialRatings} />
       <div className="voto"><span className="num">{c.voto}</span><span className="classe">{c.classe}</span></div>
       <dl className="facts">
-        <div><dt>Allenatore</dt><dd>{c.coachLabel}</dd></div>
+        <div><dt>Allenatore</dt><dd>{c.coachName ? `${c.coachName} (${c.coachLabel})` : c.coachLabel}</dd></div>
         <div><dt>Modulo preferito</dt><dd>{c.preferredModule === "tutti" ? "Tutti" : c.preferredModule}</dd></div>
         <div><dt>Stadio</dt><dd>{typeof c.stadium === "string" ? c.stadium : c.stadium.label}</dd></div>
         <div><dt>Tifoseria</dt><dd>{typeof c.fans === "string" ? c.fans : c.fans.label}</dd></div>

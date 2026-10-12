@@ -238,3 +238,44 @@ table.table { width: 100%; border-collapse: collapse; font-size: 15px; }
 .player-row { display: grid; grid-template-columns: 1fr; gap: 8px; }
 .player-row > .row { justify-content: flex-end; flex-wrap: wrap; }
 @media (min-width: 480px) { .player-row { grid-template-columns: 1fr auto; } }
+
+/* v3: barra palco, domanda, badge, streak */
+.stage-bar { width: 100%; max-width: 420px; display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; margin-bottom: 8px; }
+.stage-title { font-family: var(--display); font-weight: 800; font-size: 22px; }
+.stage-count { font-size: 14px; color: var(--chalk-dim); text-align: left; }
+.stage-bar .icon-btn { justify-self: end; }
+.icon-btn { background: rgba(0, 0, 0, 0.3); border: 1px solid var(--line); border-radius: 999px; width: 40px; height: 40px; cursor: pointer; font-size: 18px; }
+.question { display: flex; gap: 12px; align-items: center; text-align: left; width: 100%; max-width: 420px; margin-top: 14px; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; }
+.question.gold { border-color: var(--amber); }
+.q-emoji { font-size: 30px; line-height: 1; }
+.q-title { font-family: var(--display); font-weight: 800; font-size: 20px; line-height: 1.1; }
+.question.gold .q-title { color: var(--amber); }
+.q-text { color: var(--chalk-dim); font-size: 15px; }
+.note-row { display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; min-height: 30px; }
+.badge-lucky { background: var(--amber); color: var(--amber-ink); font-weight: 700; border-radius: 999px; padding: 4px 14px; font-size: 14px; box-shadow: 0 0 18px rgba(255, 179, 26, 0.45); }
+.stage-actions { margin: 10px 0 4px; min-height: 52px; }
+.streak-card { display: flex; align-items: center; gap: 12px; justify-content: center; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--line); border-radius: 14px; padding: 8px 16px; margin-top: 12px; font-weight: 600; flex-wrap: wrap; }
+.streak-dots { display: inline-flex; gap: 8px; }
+.streak-dots i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--win); display: inline-block; }
+.streak-dots i.on { background: var(--win); box-shadow: 0 0 10px rgba(126, 224, 138, 0.6); }
+.recap { margin-top: 18px; width: 100%; max-width: 420px; text-align: left; }
+@media (prefers-reduced-motion: no-preference) {
+  .btn.pulse { animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 179, 26, 0.55); } 50% { box-shadow: 0 0 0 10px rgba(255, 179, 26, 0); } }
+}
+.app-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
+.app-head .brand { display: flex; align-items: center; gap: 8px; font-family: var(--display); font-weight: 900; font-size: 22px; }
+.warn { color: #ffc2c7; font-size: 14px; margin: 4px 0 10px; }
+.tabbar button { position: relative; }
+.tabbar .live { position: absolute; top: 4px; left: 50%; margin-left: 8px; background: var(--scarf); color: #fff; font-size: 9px; font-weight: 700; border-radius: 6px; padding: 1px 4px; }
+.status-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+.status-dot.ok { background: var(--win); } .status-dot.mid { background: var(--sky); } .status-dot.no { background: var(--scarf); }
+.cat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cat { text-align: left; background: rgba(0, 0, 0, 0.28); border: 1px solid var(--line); border-radius: 14px; padding: 14px; cursor: pointer; min-height: 116px; display: flex; flex-direction: column; gap: 4px; }
+.cat .ico { font-size: 26px; }
+.cat strong { font-size: 17px; }
+.cat .val { font-family: var(--display); font-weight: 800; font-size: 22px; color: var(--amber); margin-top: auto; }
+.cat.done { border-color: rgba(126, 224, 138, 0.6); }
+.event-card { display: flex; gap: 12px; align-items: center; text-align: left; background: var(--panel); border: 1px solid var(--amber); border-radius: 12px; padding: 10px 14px; margin-top: 12px; width: 100%; max-width: 420px; }
+.ev-ico { font-size: 30px; }
+a.btn { text-decoration: none; display: inline-block; }

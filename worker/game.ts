@@ -155,12 +155,12 @@ async function playClaimed(env: Env, l: LeagueRow, md: number): Promise<{ matchd
     stmts.push(env.DB.prepare("UPDATE matches SET played = 1, home_goals = ?, away_goals = ?, data = ? WHERE id = ?").bind(res.homeGoals, res.awayGoals, JSON.stringify(data), m.id));
     m.played = 1; m.home_goals = res.homeGoals; m.away_goals = res.awayGoals;
     const nameOf = (side: "home" | "away") => (side === "home" ? H.club.name : A.club.name);
-    const tact = (c: typeof hc) => `${c.modulo}, ${c.atteggiamento}${c.turnover !== "nessuno" ? `, turnover ${c.turnover}` : ""}`;
+    const tact = (c: typeof hc, cl: typeof H.club) => `allenatore ${cl.coachName ?? cl.coachLabel}: ${c.modulo}, ${c.atteggiamento}${c.turnover !== "nessuno" ? `, turnover ${c.turnover}` : ""}`;
     summaries.push({
       home: H.club.name, away: A.club.name, hg: res.homeGoals, ag: res.awayGoals, derby,
       scorers: res.events.filter((e) => e.type === "gol").map((e) => ({ team: nameOf(e.team), player: e.player!, minute: e.minute })),
       reds: res.events.filter((e) => e.type === "rosso").map((e) => ({ team: nameOf(e.team), player: e.player!, minute: e.minute })),
-      tactics: [tact(hc), tact(ac)],
+      tactics: [tact(hc, H.club), tact(ac, A.club)],
     });
   }
 
@@ -303,7 +303,7 @@ export function publicClub(b: ClubBundle & { owner: string }) {
   const c: Club = b.club;
   return {
     id: b.id, owner: b.owner, isCpu: b.isCpu, name: c.name, colors: c.colors, crest: c.crest, city: c.city, blasone: c.blasone,
-    ratings: b.state.ratings, voto: c.voto, classe: c.classe, coachLabel: c.coachLabel, preferredModule: c.preferredModule,
+    ratings: b.state.ratings, voto: c.voto, classe: c.classe, coachLabel: c.coachLabel, coachName: c.coachName ?? null, preferredModule: c.preferredModule,
     stadium: c.stadium.label, fans: c.fans.label, fuoriclasse: c.fuoriclasse, sponsor: c.sponsor, form: b.state.lastResults,
     initialRatings: c.ratings,
   };

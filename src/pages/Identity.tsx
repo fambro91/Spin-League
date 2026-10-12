@@ -10,14 +10,14 @@ const PRESETS: [string, string][] = [
 ];
 const CRESTS: Id["crest"][] = ["scudo", "cerchio", "rombo", "stella"];
 
-export function Identity({ token, draft, onDone }: { token: string; draft: Draft; onDone: () => void }) {
+export function Identity({ token, draft, seed, onDone }: { token: string; draft: Draft; seed: string; onDone: () => void }) {
   const [name, setName] = useState("");
   const [colors, setColors] = useState<[string, string]>(PRESETS[0]);
   const [crest, setCrest] = useState<Id["crest"]>("scudo");
   const [fname, setFname] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const preview = useMemo(() => computeClub(draft, { name: name || "Il tuo club", colors, crest, fuoriclasseName: fname }, "preview"), [draft, name, colors, crest, fname]);
+  const preview = useMemo(() => computeClub(draft, { name: name || "Il tuo club", colors, crest, fuoriclasseName: fname }, seed), [draft, name, colors, crest, fname, seed]);
   const hasFuori = !!preview.fuoriclasse;
 
   const save = async (e: React.FormEvent) => {
@@ -34,6 +34,7 @@ export function Identity({ token, draft, onDone }: { token: string; draft: Draft
         <Crest name={preview.name} colors={colors} shape={crest} size={84} />
         <div className="club-name">{preview.name}</div>
         <div className="muted">{preview.city} · {preview.blasone}</div>
+        <div className="small">Allenatore: <strong>{preview.coachName}</strong> ({preview.coachLabel})</div>
         <Radar ratings={preview.ratings} />
         <div className="voto"><span className="num">{preview.voto}</span><span className="classe">{preview.classe}</span></div>
       </div>

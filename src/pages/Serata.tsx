@@ -5,10 +5,12 @@ import type { Wheel } from "../../shared/wheels";
 import { WheelCanvas, type SpinTarget } from "../components/WheelCanvas";
 import { Replay } from "../components/Replay";
 import { Crest } from "../components/ClubBits";
+import { MuteButton } from "../components/MuteButton";
+import { ding, unlockAudio } from "../feedback";
 
 const EVENT_WHEEL: Wheel = {
   id: "eventi", title: "Ruota degli eventi", subtitle: "Cosa succede stanotte nel campionato", emoji: "🎡", palette: "rainbow",
-  segments: DAILY_EVENTS.map((e) => ({ label: e.label, weight: e.weight })),
+  segments: DAILY_EVENTS.map((e) => ({ label: e.label, weight: e.weight, icon: e.icon })),
 };
 
 type Step =
@@ -55,7 +57,7 @@ export function Serata({ token, md, d, onClose }: { token: string; md: number; d
     <div className="modal show" role="dialog" aria-label={`Serata della giornata ${md}`}>
       <div className="show-top">
         <div className="dots" aria-hidden>{steps.map((_, k) => <i key={k} className={k <= i ? "on" : ""} />)}</div>
-        <button className="btn ghost small" onClick={onClose}>Esci</button>
+        <div className="row"><MuteButton /><button className="btn ghost small" onClick={onClose}>Esci</button></div>
       </div>
       <div className="show-body">
         {err && <div className="error">{err}</div>}
@@ -158,32 +160,37 @@ function EventStep({ n, total, ev, order, clubsById, myId }: { n: number; total:
     segments: order.map((id) => ({ label: clubsById.get(id)?.name ?? "?", weight: 1 })),
   }), [order, clubsById]);
   const clubIdx = Math.max(0, order.indexOf(ev.clubId));
-  const evLabel = DAILY_EVENTS[ev.eventIndex]?.label ?? "";
-  const showClubWheel = phase === "spun1" || phase === "spin2" || phase === "done";
-  const wheel = showClubWheel && needsClub ? clubWheel : EVENT_WHEEL;
+  const evDef = DAILY_EVENTS[ev.eventIndex];
   const hitsMe = ev.clubId && ev.clubId === myId;
-
-  const go = () => {
-    if (phase === "ready") { setPhase("spin1"); setT1({ index: ev.eventIndex, key: Date.now() }); }
-    else if (phase === "spun1") { setPhase("spin2"); setT2({ index: clubIdx, key: Date.now() }); }
-  };
+  const evShown = phase !== "ready" && phase !== "spin1";
+  const go1 = () => { unlockAudio(); setPhase("spin1"); setT1({ index: ev.eventIndex, key: Date.now() }); };
+  const go2 = () => { unlockAudio(); setPhase("spin2"); setT2({ index: clubIdx, key: Date.now() }); };
   return (
     <div className="stage-inline">
-      <div className="kicker">Evento {n + 1} di {total}</div>
-      <div className="pill">{wheel.title}</div>
-      <div className="subtitle">{wheel.subtitle}</div>
-      <div className="result" aria-live="polite">
-        {phase === "spun1" || phase === "spin2" ? evLabel : phase === "done" ? (needsClub ? clubsById.get(ev.clubId)?.name : evLabel) : " "}
+      <div className="kicker">Gli eventi della giornata · {n + 1} di {total}</div>
+      <div className="pill">Ruota degli eventi</div>
+      <div className="wheel-box" style={{ width: "min(76vw, 300px)", margin: "10px auto" }}>
+        <WheelCanvas wheel={EVENT_WHEEL} target={t1} hub="🎡" onDone={() => { ding(); setPhase(needsClub ? "spun1" : "done"); }} />
       </div>
-      <div className="wheel-box" style={{ width: "min(80vw, 340px)" }}>
-        {wheel === EVENT_WHEEL
-          ? <WheelCanvas key="ev" wheel={EVENT_WHEEL} target={t1} onDone={() => setPhase(needsClub ? "spun1" : "done")} />
-          : <WheelCanvas key="club" wheel={clubWheel} target={t2} onDone={() => setPhase("done")} />}
-      </div>
-      {phase === "ready" && <button className="btn" onClick={go}>Gira la ruota degli eventi</button>}
-      {phase === "spun1" && <button className="btn" onClick={go}>Chi colpisce? Gira</button>}
-      {(phase === "spin1" || phase === "spin2") && <button className="btn" disabled>Gira…</button>}
-      {phase === "done" && <div className={`event-text ${hitsMe ? "me" : ""}`}>{hitsMe ? "Tocca a te! " : ""}{ev.text}</div>}
+      {phase === "ready" && <button className="btn pulse" onClick={go1}>Gira la ruota degli eventi</button>}
+      {phase === "spin1" && <button className="btn" disabled>Gira…</button>}
+      {evShown && (
+        <div className="event-card">
+          <span className="ev-ico" aria-hidden>{evDef?.icon}</span>
+          <div><strong>{evDef?.label}</strong><div className="small muted">{needsClub ? "A chi tocca? Lo decide la seconda ruota." : ev.text}</div></div>
+        </div>
+      )}
+      {needsClub && evShown && (
+        <>
+          <div className="pill" style={{ marginTop: 18, fontSize: 22 }}>Chi colpisce?</div>
+          <div className="wheel-box" style={{ width: "min(62vw, 240px)", margin: "10px auto" }}>
+            <WheelCanvas wheel={clubWheel} target={t2} hub="🎯" onDone={() => { ding(!!hitsMe); setPhase("done"); }} />
+          </div>
+          {phase === "spun1" && <button className="btn pulse" onClick={go2}>Gira: chi colpisce?</button>}
+          {phase === "spin2" && <button className="btn" disabled>Gira…</button>}
+        </>
+      )}
+      {phase === "done" && needsClub && <div className={`event-text ${hitsMe ? "me" : ""}`}>{hitsMe ? "Tocca a te! " : ""}{ev.text}</div>}
     </div>
   );
 }

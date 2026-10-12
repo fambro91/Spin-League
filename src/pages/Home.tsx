@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api, adminLink, playerLink, store } from "../api";
 import { WheelCanvas } from "../components/WheelCanvas";
+import { Logo } from "../components/Logo";
 import { WHEELS } from "../../shared/wheels";
 
 export function Home() {
@@ -31,10 +32,10 @@ export function Home() {
   return (
     <div className="wrap">
       <div style={{ textAlign: "center", paddingTop: 18 }}>
-        <div className="hero-wheel"><WheelCanvas wheel={WHEELS.blasone} target={null} idleSpin /></div>
-        <h1>Spin League</h1>
+        <Logo size={150} />
+        <div className="hero-wheel"><WheelCanvas wheel={WHEELS.blasone} target={null} idleSpin hub="⚽" /></div>
         <p className="muted" style={{ maxWidth: 420, margin: "0 auto 18px" }}>
-          Il campionato tra amici dove il club lo decidono le ruote. Una giornata al giorno, alle 21:00.
+          Ogni giorno una nuova partita, ogni giorno una nuova storia. Il club lo decidono le ruote; si gioca alle 21:00.
         </p>
       </div>
 

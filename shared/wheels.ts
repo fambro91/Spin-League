@@ -2,11 +2,12 @@ import type { CoachStyle, CreationState, Draft, LuckyOp, Modulo, Reparto, SpinRe
 import { REPARTO_LABEL } from "./types";
 import type { Rng } from "./rng";
 
-export type Segment = { label: string; weight: number; lucky?: boolean; data?: any };
+export type Segment = { label: string; weight: number; lucky?: boolean; data?: any; icon?: string };
 export type Wheel = {
   id: string;
   title: string;
   subtitle: string;
+  question?: string;
   emoji: string;
   palette: "rainbow" | "pitch" | "gold" | "blue" | "red" | "purple" | "teal";
   segments: Segment[];
@@ -23,6 +24,7 @@ const CITIES: [string, string][] = [
 
 const repartoWheel = (rep: Reparto): Wheel => ({
   id: `rep_${rep}`,
+  question: { por: "Quanto è forte il tuo portiere?", dif: "Quanto è solida la tua difesa?", cen: "Chi comanda a centrocampo?", att: "Quanti gol farà il tuo attacco?", pan: "Quanto è lunga la panchina?", all: "Quanto vale il tuo allenatore?" }[rep],
   title: REPARTO_LABEL[rep],
   subtitle: rep === "all" ? "Quanto vale il tuo allenatore" : rep === "pan" ? "Quanto è profonda la rosa" : `Il livello del reparto ${REPARTO_LABEL[rep].toLowerCase()}`,
   emoji: { por: "🧤", dif: "🛡️", cen: "🎯", att: "⚡", pan: "🪑", all: "📋" }[rep],
@@ -40,14 +42,14 @@ const repartoWheel = (rep: Reparto): Wheel => ({
 
 export const WHEELS: Record<string, Wheel> = {
   citta: {
-    id: "citta", title: "Città", subtitle: "Dove nasce il tuo club", emoji: "📍", palette: "teal",
+    id: "citta", question: "Dove nasce il tuo club?", title: "Città", subtitle: "Dove nasce il tuo club", emoji: "📍", palette: "teal",
     segments: [
       ...CITIES.map(([c, r]) => ({ label: c, weight: 1, data: r })),
       { label: "Paesino di 800 abitanti", weight: 0.6, data: "" },
     ],
   },
   blasone: {
-    id: "blasone", title: "Blasone", subtitle: "La storia decide il livello di partenza", emoji: "🏛️", palette: "purple",
+    id: "blasone", question: "Quanta storia ha il tuo club?", title: "Blasone", subtitle: "La storia decide il livello di partenza", emoji: "🏛️", palette: "purple",
     segments: [
       { label: "Neopromossa", weight: 25, data: 58 },
       { label: "Provinciale", weight: 30, data: 63 },
@@ -64,7 +66,7 @@ export const WHEELS: Record<string, Wheel> = {
   rep_pan: repartoWheel("pan"),
   rep_all: repartoWheel("all"),
   stile: {
-    id: "stile", title: "Stile dell'allenatore", subtitle: "Come vuole giocare la tua squadra", emoji: "🧠", palette: "blue",
+    id: "stile", question: "Che tipo di allenatore hai?", title: "Stile dell'allenatore", subtitle: "Come vuole giocare la tua squadra", emoji: "🧠", palette: "blue",
     segments: [
       { label: "Difensivista", weight: 20, data: ["difensivista", "5-3-2"] },
       { label: "Giochista", weight: 20, data: ["giochista", "4-3-3"] },
@@ -76,7 +78,7 @@ export const WHEELS: Record<string, Wheel> = {
     ],
   },
   budget: {
-    id: "budget", title: "Budget", subtitle: "Milioni di euro per la stagione", emoji: "💰", palette: "gold",
+    id: "budget", question: "Quanti soldi ha la società?", title: "Budget", subtitle: "Milioni di euro per la stagione", emoji: "💰", palette: "gold",
     segments: [
       { label: "Società in crisi · 5 M€", weight: 15, data: 5 },
       { label: "Bilancio stretto · 15 M€", weight: 25, data: 15 },
@@ -88,7 +90,7 @@ export const WHEELS: Record<string, Wheel> = {
     ],
   },
   stadio: {
-    id: "stadio", title: "Stadio", subtitle: "Più posti, più incassi", emoji: "🏟️", palette: "pitch",
+    id: "stadio", question: "Dove giochi in casa?", title: "Stadio", subtitle: "Più posti, più incassi", emoji: "🏟️", palette: "pitch",
     segments: [
       { label: "Campo parrocchiale", weight: 5, data: 0.3 },
       { label: "Comunale da 8.000", weight: 25, data: 0.8 },
@@ -99,7 +101,7 @@ export const WHEELS: Record<string, Wheel> = {
     ],
   },
   tifoseria: {
-    id: "tifoseria", title: "Tifoseria", subtitle: "Il fattore campo", emoji: "📣", palette: "red",
+    id: "tifoseria", question: "Che tifosi hai?", title: "Tifoseria", subtitle: "Il fattore campo", emoji: "📣", palette: "red",
     segments: [
       { label: "Fredda", weight: 20, data: [0, 0] },
       { label: "Normale", weight: 35, data: [2, 0] },
@@ -110,7 +112,7 @@ export const WHEELS: Record<string, Wheel> = {
     ],
   },
   fuoriclasse: {
-    id: "fuoriclasse", title: "Fuoriclasse", subtitle: "Il giocatore che fa la differenza", emoji: "⭐", palette: "gold",
+    id: "fuoriclasse", question: "Hai un fuoriclasse in rosa?", title: "Fuoriclasse", subtitle: "Il giocatore che fa la differenza", emoji: "⭐", palette: "gold",
     segments: [
       { label: "Nessun fuoriclasse", weight: 15, data: 0 },
       { label: "Buon giocatore", weight: 40, data: 1 },
@@ -120,7 +122,7 @@ export const WHEELS: Record<string, Wheel> = {
     ],
   },
   ruolo: {
-    id: "ruolo", title: "Ruolo del fuoriclasse", subtitle: "Dove gioca la tua stella", emoji: "👟", palette: "teal",
+    id: "ruolo", question: "In che ruolo gioca la tua stella?", title: "Ruolo del fuoriclasse", subtitle: "Dove gioca la tua stella", emoji: "👟", palette: "teal",
     segments: [
       { label: "Portiere", weight: 10, data: "por" },
       { label: "Difensore", weight: 25, data: "dif" },
@@ -129,7 +131,7 @@ export const WHEELS: Record<string, Wheel> = {
     ],
   },
   sponsor: {
-    id: "sponsor", title: "Sponsor di maglia", subtitle: "Chi paga la maglia", emoji: "👕", palette: "blue",
+    id: "sponsor", question: "Chi c'è sulla maglia?", title: "Sponsor di maglia", subtitle: "Chi paga la maglia", emoji: "👕", palette: "blue",
     segments: [
       { label: "Mobilificio Bianchi", weight: 12, data: 0 },
       { label: "Pizzeria Da Gino", weight: 12, data: 0 },
@@ -143,7 +145,7 @@ export const WHEELS: Record<string, Wheel> = {
     ],
   },
   lucky: {
-    id: "lucky", title: "Lucky Streak", subtitle: "Ruota segreta: 3 spin fortunati di fila", emoji: "🎉", palette: "gold",
+    id: "lucky", question: "Che premio ti porti a casa?", title: "Lucky Streak", subtitle: "Ruota segreta: 3 spin fortunati di fila", emoji: "🎉", palette: "gold",
     segments: [
       { label: "Rinforzo +5", weight: 30, data: "rinforzo" },
       { label: "Iniezione di capitale +50 M€", weight: 25, data: "capitale" },
@@ -155,7 +157,7 @@ export const WHEELS: Record<string, Wheel> = {
     ],
   },
   reparto_caso: {
-    id: "reparto_caso", title: "Reparto a caso", subtitle: "Dove cade il premio", emoji: "🎲", palette: "rainbow",
+    id: "reparto_caso", question: "Dove cade il premio?", title: "Reparto a caso", subtitle: "Dove cade il premio", emoji: "🎲", palette: "rainbow",
     segments: (["por", "dif", "cen", "att", "pan", "all"] as Reparto[]).map((r) => ({ label: REPARTO_LABEL[r], weight: 1, data: r })),
   },
 };

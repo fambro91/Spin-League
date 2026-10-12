@@ -28,6 +28,21 @@ export function generateRoster(seed: string, fuoriName?: string, fuoriRuolo?: Re
   return roster;
 }
 
+export const COACH_NAMES: Record<string, string[]> = {
+  difensivista: ["Max Allegria", "José Mourigno", "Cholo Simeoncino", "Rocco Catenacci"],
+  giochista: ["Pep Guardiolina", "Maurizio Sarrino", "Roberto De Zerbino", "Arrigo Sacchetto"],
+  sergente: ["Antonio Contessa", "Fabio Capellone", "Giovanni Trapattino", "Marcello Lippone"],
+  motivatore: ["Carletto Sopracciglio", "Jürgen Kloppetto", "Claudio Ranierino", "Sir Alex Fergusoni"],
+  camaleonte: ["Luciano Spallettone", "Simone Inzaghetto", "Gian Piero Gasperinho", "Stefano Piolino"],
+  visionario: ["Zdenek Zemanov", "Johan Cruijffino", "Marcelo Bielsetta", "Gigi Maifredino"],
+  bandiera: ["Capitan Tottino", "Pippo Bandierone", "Javier Zanettino", "Paolo Maldinetto"],
+};
+
+export function coachNameFor(style: string, seed: string): string {
+  const list = COACH_NAMES[style] ?? COACH_NAMES.giochista;
+  return makeRng("coach:" + seed).pick(list);
+}
+
 export const VOTO_WEIGHTS: Ratings = { att: 0.2, cen: 0.2, dif: 0.2, por: 0.15, pan: 0.1, all: 0.15 };
 
 export function voto(r: Ratings): number {
@@ -84,6 +99,7 @@ export function computeClub(d: Draft, id: Identity, seed: string): Club {
     ratings,
     coachStyle: d.coachStyle ?? "giochista",
     coachLabel: d.coachLabel ?? "Giochista",
+    coachName: coachNameFor(d.coachStyle ?? "giochista", seed),
     preferredModule: d.preferredModule ?? "4-3-3",
     stadium,
     fans: d.fans ?? { label: "Normale", campo: 2, ultras: false },

@@ -100,6 +100,7 @@ export type Club = {
   ratings: Ratings; // valori di partenza (con fuoriclasse e lucky)
   coachStyle: CoachStyle;
   coachLabel: string;
+  coachName?: string;
   preferredModule: Modulo | "tutti";
   stadium: { label: string; incasso: number };
   fans: { label: string; campo: number; ultras: boolean };
