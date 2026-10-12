@@ -167,7 +167,8 @@ async function playClaimed(env: Env, l: LeagueRow, md: number): Promise<{ matchd
   // Eventi del giorno
   const evRng = makeRng(`${l.seed}:events:${l.season}:${md}`);
   const list = [...clubs.values()];
-  const events = md < l.total_matchdays ? [dailyEvent(evRng, list, md), dailyEvent(evRng, list, md)].map((e) => e.text) : [];
+  const dayEvents = md < l.total_matchdays ? [dailyEvent(evRng, list, md), dailyEvent(evRng, list, md)] : [];
+  const events = dayEvents.map((e) => e.text);
 
   // Mercato del giro di boa
   const half = l.total_matchdays / 2;
@@ -223,6 +224,13 @@ async function playClaimed(env: Env, l: LeagueRow, md: number): Promise<{ matchd
     });
   }
 
+  const dayData = {
+    clubOrder: list.map((b) => b.id),
+    events: dayEvents.map((e) => ({ eventIndex: e.eventIndex, clubId: e.clubId, text: e.text })),
+    notes: events.slice(dayEvents.length),
+    table: rowsS.map((r) => ({ id: r.id, pt: r.pt, g: r.g, gf: r.gf, gs: r.gs })),
+  };
+  stmts.push(env.DB.prepare("INSERT OR REPLACE INTO days (league_id, season, matchday, data, created_at) VALUES (?,?,?,?,?)").bind(l.id, l.season, md, JSON.stringify(dayData), nowIso()));
   stmts.push(env.DB.prepare("UPDATE leagues SET market_open = ?, status = ?, history = ? WHERE id = ?").bind(marketOpen, final ? "finished" : "running", JSON.stringify(history), l.id));
   await env.DB.batch(stmts);
 

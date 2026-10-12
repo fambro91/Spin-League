@@ -2,32 +2,43 @@ import { useEffect, useMemo, useState } from "react";
 import { api, fmtDate, store } from "../api";
 import { Creation } from "./Creation";
 import { Identity } from "./Identity";
+import { Serata, seenKey } from "./Serata";
 import { Bar, Crest, Form, Radar } from "../components/ClubBits";
 import { Replay } from "../components/Replay";
-import { ATTEGGIAMENTI, MODULI, REPARTI, REPARTO_LABEL, type Reparto } from "../../shared/types";
+import { MODULI, REPARTI, REPARTO_LABEL, type Reparto } from "../../shared/types";
 import { marketCost, marketIncome } from "../../shared/league";
 
-type Tab = "club" | "partita" | "classifica" | "calendario" | "notizie";
+type Tab = "oggi" | "squadra" | "classifica" | "risultati" | "notizie";
 const TABS: { id: Tab; label: string; ico: string }[] = [
-  { id: "club", label: "Club", ico: "🛡️" },
-  { id: "partita", label: "Partita", ico: "📋" },
+  { id: "oggi", label: "Oggi", ico: "⚽" },
+  { id: "squadra", label: "Squadra", ico: "🛡️" },
   { id: "classifica", label: "Classifica", ico: "🏆" },
-  { id: "calendario", label: "Calendario", ico: "📅" },
+  { id: "risultati", label: "Risultati", ico: "📅" },
   { id: "notizie", label: "Notizie", ico: "📰" },
 ];
+
+type Ctx = {
+  d: any; token: string; reload: () => Promise<void>; clubsById: Map<string, any>;
+  openClub: (id: string) => void; openMatch: (id: string) => void; openSerata: (md: number) => void;
+  openTactics: () => void; openMarket: () => void;
+};
 
 export function Player({ token }: { token: string }) {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>(() => (store.get("spin:tab") as Tab) || "partita");
+  const [tab, setTab] = useState<Tab>("oggi");
   const [clubModal, setClubModal] = useState<string | null>(null);
   const [matchModal, setMatchModal] = useState<string | null>(null);
+  const [serata, setSerata] = useState<number | null>(null);
+  const [sheet, setSheet] = useState<"tactics" | "market" | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   const load = async () => {
     try { setD(await api(`me/${token}`)); setErr(null); } catch (e: any) { setErr(e.message); }
   };
   useEffect(() => { store.set("spin:lastPlayer", token); load(); }, [token]);
-  useEffect(() => { store.set("spin:tab", tab); window.scrollTo(0, 0); }, [tab]);
+  useEffect(() => { window.scrollTo(0, 0); }, [tab]);
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3500); return () => clearTimeout(t); }, [toast]);
 
   if (!d) return <div className="wrap">{err ? <div className="error">{err}</div> : <p>Carico…</p>}</div>;
   const mine = d.mine;
@@ -35,21 +46,26 @@ export function Player({ token }: { token: string }) {
   if (mine?.status === "identity") return <Identity token={token} draft={mine.creation.draft} onDone={load} />;
 
   const clubsById = new Map<string, any>(d.clubs.map((c: any) => [c.id, c]));
-  const ctx = { d, token, reload: load, clubsById, openClub: setClubModal, openMatch: setMatchModal };
+  const adminToken = store.get(`spin:admin:${d.league.id}`);
+  const ctx: Ctx = {
+    d, token, reload: load, clubsById, openClub: setClubModal, openMatch: setMatchModal, openSerata: setSerata,
+    openTactics: () => setSheet("tactics"), openMarket: () => setSheet("market"),
+  };
 
   return (
     <>
       <div className="wrap">
         <div className="row spread" style={{ marginTop: 6 }}>
-          <div className="small muted">{d.league.name} · stagione {d.league.season}</div>
-          <div className="small muted">{d.player.name}</div>
+          <div className="small muted">{d.league.name} · stagione {d.league.season} · {d.player.name}</div>
+          {adminToken && <a className="small" href={`#/admin/${adminToken}`}>Gestisci campionato</a>}
         </div>
         {err && <div className="error">{err}</div>}
+        {toast && <div className="ok" role="status">{toast}</div>}
         {!mine && <div className="panel"><h2>Stagione in corso</h2><p>Questa stagione è partita senza il tuo club. Potrai crearne uno alla prossima.</p></div>}
-        {tab === "club" && <ClubTab {...ctx} />}
-        {tab === "partita" && <MatchTab {...ctx} />}
+        {tab === "oggi" && <TodayTab {...ctx} />}
+        {tab === "squadra" && <ClubTab {...ctx} />}
         {tab === "classifica" && <TableTab {...ctx} />}
-        {tab === "calendario" && <CalendarTab {...ctx} />}
+        {tab === "risultati" && <ResultsTab {...ctx} />}
         {tab === "notizie" && <NewsTab {...ctx} />}
       </div>
       <div className="tabbar"><nav>
@@ -57,11 +73,267 @@ export function Player({ token }: { token: string }) {
       </nav></div>
       {clubModal && <ClubModal club={clubsById.get(clubModal)} onClose={() => setClubModal(null)} />}
       {matchModal && <MatchModal token={token} id={matchModal} clubsById={clubsById} onClose={() => setMatchModal(null)} />}
+      {serata && <Serata token={token} md={serata} d={d} onClose={() => { setSerata(null); load(); }} />}
+      {sheet === "tactics" && <TacticsSheet d={d} token={token} onClose={(ok) => { setSheet(null); if (ok) { setToast("Formazione confermata per stasera."); load(); } }} />}
+      {sheet === "market" && <MarketSheet d={d} token={token} reload={load} onClose={() => setSheet(null)} />}
     </>
   );
 }
 
-type Ctx = { d: any; token: string; reload: () => Promise<void>; clubsById: Map<string, any>; openClub: (id: string) => void; openMatch: (id: string) => void };
+/* ---------------- OGGI ---------------- */
+
+function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTactics, openMarket, openMatch }: Ctx) {
+  const L = d.league, mine = d.mine;
+  const myId = mine?.id;
+  const seen = Number(store.get(seenKey(L.id, L.season)) ?? 0);
+
+  if (L.status === "setup") {
+    const humans = d.participants.filter((p: any) => !p.isCpu);
+    const ready = humans.filter((p: any) => p.status === "ready").length;
+    return (
+      <>
+        <div className="today-head"><div className="big">In attesa del calcio d'inizio</div></div>
+        <div className="panel">
+          <ul className="checklist">
+            <li><span className="ck">✅</span><span>Il tuo club è pronto: {mine?.club?.name}</span></li>
+            <li><span className="ck">{ready === humans.length ? "✅" : "⏳"}</span><span>Club pronti: {ready} su {humans.length}. {humans.filter((p: any) => p.status !== "ready").map((p: any) => p.owner).join(", ")}</span></li>
+            <li><span className="ck">⏳</span><span>L'organizzatore avvia il campionato quando tutti sono pronti.</span></li>
+          </ul>
+        </div>
+        <p className="small muted">Intanto guarda la tua scheda in "Squadra".</p>
+      </>
+    );
+  }
+
+  const next = L.nextMatchday ? d.matches.find((m: any) => m.matchday === L.nextMatchday && (m.homeId === myId || m.awayId === myId)) : null;
+  const confirmed = mine?.state?.confirmedFor === L.nextMatchday;
+  const unseen = L.matchdayPlayed > seen ? L.matchdayPlayed : null;
+  const today = d.now?.date === L.nextMatchDate;
+  const st = mine?.state;
+
+  return (
+    <>
+      <div className="today-head">
+        <div className="small muted">{L.status === "finished" ? "Stagione conclusa" : `Giornata ${L.nextMatchday} di ${L.totalMatchdays}`}</div>
+        <div className="big">{L.status === "finished" ? "Si alza la coppa" : today ? "Stasera si gioca" : `Si gioca il ${fmtDate(L.nextMatchDate)}`}</div>
+      </div>
+
+      {unseen && (
+        <div className="panel cta-card">
+          <h2>La serata della giornata {unseen}</h2>
+          <p>Gli highlights della tua partita, gli altri risultati, le ruote degli eventi e la classifica aggiornata.</p>
+          <button className="btn block" onClick={() => openSerata(unseen)}>Guarda la serata</button>
+        </div>
+      )}
+
+      {L.status === "finished" && <SeasonEnd d={d} />}
+
+      {next && mine && (
+        <div className={`panel ${!confirmed && !unseen ? "cta-card" : ""}`}>
+          <div className="row spread">
+            <h2 style={{ margin: 0 }}>La tua partita</h2>
+            <span className={`chip ${confirmed ? "done" : "todo"}`}>{confirmed ? "Formazione pronta" : "Formazione da fare"}</span>
+          </div>
+          <Versus m={next} clubsById={clubsById} onOpen={openClub} />
+          <p className="small muted" style={{ textAlign: "center" }}>{next.homeId === myId ? "In casa" : "In trasferta"} · {fmtDate(L.nextMatchDate)}, ore 21:00 · tocca lo stemma avversario per la sua scheda</p>
+          <div className="stack" style={{ margin: "10px 0 14px" }}>
+            <div><div className="row spread small"><span>Condizione</span><span>{st.cond}</span></div><Bar value={st.cond} color={st.cond < 60 ? "#e0343f" : "#7ee08a"} /></div>
+            <div><div className="row spread small"><span>Morale</span><span>{st.morale}</span></div><Bar value={st.morale} color="#8fd3ff" /></div>
+          </div>
+          {st.modifiers?.length > 0 && <p className="small">{st.modifiers.map((m: any, i: number) => <span key={i} className="tag">{m.label}: {REPARTO_LABEL[m.rep as Reparto]} {m.delta}</span>)}</p>}
+          <button className={`btn block ${confirmed ? "ghost" : ""}`} onClick={openTactics}>{confirmed ? "Modifica la formazione" : "Prepara la formazione"}</button>
+          {!confirmed && <p className="small muted" style={{ marginTop: 8 }}>Hai tempo fino alle 21:00. Se non scegli, giochi con le scelte dell'ultima volta.</p>}
+        </div>
+      )}
+
+      {st?.pendingDecision === "fuoriclasse" && <DecisionCard d={d} token={token} reload={reload} />}
+
+      {L.marketOpen && mine && (
+        <div className="panel cta-card">
+          <h2>Mercato aperto</h2>
+          <p>Solo fino alla prossima giornata: rinforza un reparto o fai un'offerta per un fuoriclasse. Budget {st.budget} M€.</p>
+          <button className="btn block" onClick={openMarket}>Entra nel mercato</button>
+        </div>
+      )}
+
+      {L.matchdayPlayed > 0 && (
+        <div className="panel">
+          <h3>Rivivi le serate</h3>
+          <div className="row wrap-row">
+            {Array.from({ length: Math.min(L.matchdayPlayed, 6) }, (_, i) => L.matchdayPlayed - i).map((md) => (
+              <button key={md} className="btn ghost small" onClick={() => openSerata(md)}>Giornata {md}</button>
+            ))}
+          </div>
+          {(() => {
+            const last = [...d.matches].filter((m: any) => m.played && (m.homeId === myId || m.awayId === myId)).pop();
+            return last ? <button className="btn ghost small" style={{ marginTop: 10 }} onClick={() => openMatch(last.id)}>Highlights della mia ultima partita</button> : null;
+          })()}
+        </div>
+      )}
+    </>
+  );
+}
+
+function Versus({ m, clubsById, onOpen }: { m: any; clubsById: Map<string, any>; onOpen: (id: string) => void }) {
+  const h = clubsById.get(m.homeId), a = clubsById.get(m.awayId);
+  const side = (c: any, id: string) => (
+    <button style={{ background: "none", border: 0, cursor: "pointer" }} onClick={() => onOpen(id)} aria-label={`Scheda di ${c?.name}`}>
+      <Crest name={c?.name ?? "?"} colors={c?.colors ?? ["#333", "#999"]} shape={c?.crest ?? "scudo"} size={58} />
+      <div className="name">{c?.name}</div>
+      <div className="small muted">voto {c?.voto} · {c?.classe}</div>
+    </button>
+  );
+  return <div className="versus">{side(h, m.homeId)}<span className="vs">{m.played ? `${m.hg}-${m.ag}` : "VS"}</span>{side(a, m.awayId)}</div>;
+}
+
+function DecisionCard({ d, token, reload }: { d: any; token: string; reload: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const act = async (sell: boolean) => {
+    setBusy(true);
+    try { await api(`me/${token}/decision`, { body: { sell } }); await reload(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <div className="panel cta-card">
+      <h2>{d.mine.club.fuoriclasse?.name} vuole andare via</h2>
+      <p>Vendilo per 60 M€ e perdi il suo bonus, oppure tienilo e il morale scende di 10. Se non decidi entro le 21:00, resta.</p>
+      {err && <div className="error">{err}</div>}
+      <div className="row">
+        <button className="btn small" disabled={busy} onClick={() => act(true)}>Vendilo</button>
+        <button className="btn ghost small" disabled={busy} onClick={() => act(false)}>Tienilo</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- FORMAZIONE ---------------- */
+
+const MOD_INFO: Record<string, string> = {
+  "4-3-3": "Offensivo: Attacco +2, Difesa −2", "3-4-3": "Offensivo: Attacco +2, Difesa −2",
+  "4-4-2": "Equilibrato", "4-2-3-1": "Equilibrato", "3-5-2": "Equilibrato",
+  "5-3-2": "Difensivo: Difesa +2, Attacco −2", "4-5-1": "Difensivo: Difesa +2, Attacco −2",
+};
+const ATT_INFO = [
+  { id: "equilibrato", label: "Equilibrato", info: "Nessun effetto: la scelta sicura." },
+  { id: "offensivo", label: "Offensivo", info: "Segni di più, ma concedi di più." },
+  { id: "difensivo", label: "Difensivo", info: "Segni meno, concedi molto meno." },
+  { id: "contropiede", label: "Contropiede", info: "Concedi meno. Letale se l'avversario attacca o pressa." },
+  { id: "pressing", label: "Pressing alto", info: "Più gol fatti, meno subiti, ma stanca di più." },
+];
+const TURN_INFO = [
+  { id: "nessuno", label: "Nessuno", info: "Giocano i titolari." },
+  { id: "parziale", label: "Parziale", info: "Reparti −2, recuperi 6 punti di condizione in più." },
+  { id: "massiccio", label: "Massiccio", info: "Gioca la panchina, recuperi 15 punti in più." },
+];
+const TALK_INFO = [
+  { id: "nessuno", label: "Nessuno", info: "Nessun effetto." },
+  { id: "motivare", label: "Motivare", info: "+5 morale, ma −5 in più se perdi." },
+  { id: "calmare", label: "Calmare", info: "Riporta il morale verso 50." },
+];
+
+function TacticsSheet({ d, token, onClose }: { d: any; token: string; onClose: (ok: boolean) => void }) {
+  const st = d.mine.state, club = d.mine.club;
+  const [c, setC] = useState(st.choices);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const pref = club.preferredModule;
+  const save = async () => {
+    setBusy(true); setErr(null);
+    try { await api(`me/${token}/choices`, { body: c }); onClose(true); } catch (e: any) { setErr(e.message); setBusy(false); }
+  };
+  const Tiles = ({ items, value, onPick }: { items: { id: string; label: string; info: string }[]; value: string; onPick: (v: any) => void }) => (
+    <div className="tiles">{items.map((x) => <button type="button" key={x.id} className="tile" aria-pressed={value === x.id} onClick={() => onPick(x.id)}><strong>{x.label}</strong><span>{x.info}</span></button>)}</div>
+  );
+  return (
+    <div className="modal" role="dialog" aria-label="Prepara la formazione">
+      <div className="wrap" style={{ paddingBottom: 0 }}>
+        <div className="row spread"><h2 style={{ margin: "8px 0" }}>Prepara la formazione</h2><button className="btn ghost small" onClick={() => onClose(false)}>Chiudi</button></div>
+        <p className="small muted">Condizione {st.cond} · morale {st.morale} · allenatore {club.coachLabel}</p>
+        <div className="sheet-section">
+          <h3>Modulo</h3>
+          <p className="small muted">{pref === "tutti" ? "Il tuo allenatore rende bene con qualsiasi modulo." : `Il modulo preferito dell'allenatore (★ ${pref}) dà +2 ad Attacco, Centrocampo e Difesa.`}</p>
+          <Tiles items={MODULI.map((m) => ({ id: m, label: m + (pref === m ? " ★" : ""), info: MOD_INFO[m] }))} value={c.modulo} onPick={(v) => setC({ ...c, modulo: v })} />
+        </div>
+        <div className="sheet-section"><h3>Atteggiamento</h3><Tiles items={ATT_INFO} value={c.atteggiamento} onPick={(v) => setC({ ...c, atteggiamento: v })} /></div>
+        <div className="sheet-section">
+          <h3>Turnover</h3>
+          <p className="small muted">{st.cond < 60 ? "Squadra stanca: conviene far riposare qualcuno." : "Ogni partita costa 10 punti di condizione, ne recuperi 6 al giorno."}</p>
+          <Tiles items={TURN_INFO} value={c.turnover} onPick={(v) => setC({ ...c, turnover: v })} />
+        </div>
+        <div className="sheet-section"><h3>Discorso nello spogliatoio</h3><Tiles items={TALK_INFO} value={c.discorso} onPick={(v) => setC({ ...c, discorso: v })} /></div>
+        {err && <div className="error">{err}</div>}
+        <div className="sheet-foot"><button className="btn block" disabled={busy} onClick={save}>{busy ? "Salvo…" : "Conferma la formazione"}</button></div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- MERCATO ---------------- */
+
+function MarketSheet({ d, token, reload, onClose }: { d: any; token: string; reload: () => Promise<void>; onClose: () => void }) {
+  const st = d.mine.state, myId = d.mine.id;
+  const [err, setErr] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [offer, setOffer] = useState<Record<string, string>>({});
+  const act = async (fn: () => Promise<any>, ok: string) => {
+    setErr(null); setMsg(null);
+    try { const r = await fn(); setMsg(r?.cpu === "rifiutata" ? "La CPU ha rifiutato: offri di più." : ok); await reload(); } catch (e: any) { setErr(e.message); }
+  };
+  const incoming = d.offers.filter((o: any) => o.to_club === myId && o.status === "aperta");
+  const outgoing = d.offers.filter((o: any) => o.from_club === myId);
+  const others = d.clubs.filter((c: any) => c.id !== myId && c.fuoriclasse);
+  return (
+    <div className="modal" role="dialog" aria-label="Mercato">
+      <div className="wrap">
+        <div className="row spread"><h2 style={{ margin: "8px 0" }}>Mercato</h2><button className="btn ghost small" onClick={onClose}>Chiudi</button></div>
+        <p>Budget <strong>{st.budget} M€</strong> · operazioni usate {st.marketOps} su 2 · ogni reparto può salire al massimo di 4.</p>
+        {err && <div className="error">{err}</div>}
+        {msg && <div className="ok">{msg}</div>}
+        <div className="panel">
+          <h3>Rinforza o cedi un reparto</h3>
+          {REPARTI.map((r) => (
+            <div key={r} className="market-row">
+              <span>{REPARTO_LABEL[r]} <strong>{st.ratings[r]}</strong></span>
+              <button className="btn small" onClick={() => act(() => api(`me/${token}/market`, { body: { op: "buy", rep: r } }), `${REPARTO_LABEL[r]} +2.`)}>+2 · {marketCost(st.ratings[r])} M€</button>
+              <button className="btn ghost small" onClick={() => act(() => api(`me/${token}/market`, { body: { op: "sell", rep: r } }), `${REPARTO_LABEL[r]} −2.`)}>−2 · +{marketIncome(st.ratings[r])} M€</button>
+            </div>
+          ))}
+        </div>
+        <div className="panel">
+          <h3>Compra un fuoriclasse</h3>
+          {others.length === 0 && <p className="muted small">Nessun altro club ha un fuoriclasse.</p>}
+          {others.map((c: any) => (
+            <div key={c.id} className="player-row">
+              <span className="small grow"><strong>{c.fuoriclasse.name}</strong><br />{c.name} · +{c.fuoriclasse.bonus} {REPARTO_LABEL[c.fuoriclasse.ruolo as Reparto]}</span>
+              <span className="row">
+                <input type="number" min={1} style={{ width: 84 }} placeholder="M€" value={offer[c.id] ?? ""} onChange={(e) => setOffer({ ...offer, [c.id]: e.target.value })} aria-label={`Offerta per ${c.fuoriclasse.name}`} />
+                <button className="btn small" onClick={() => act(() => api(`me/${token}/offers`, { body: { to: c.id, money: Number(offer[c.id]) } }), "Offerta inviata.")}>Offri</button>
+              </span>
+            </div>
+          ))}
+          <p className="small muted" style={{ marginTop: 8 }}>Le CPU accettano subito se l'offerta è abbastanza alta; gli amici rispondono dalla loro app.</p>
+        </div>
+        {incoming.length > 0 && (
+          <div className="panel cta-card">
+            <h3>Offerte per il tuo fuoriclasse</h3>
+            {incoming.map((o: any) => (
+              <div key={o.id} className="player-row">
+                <span className="small">{d.clubs.find((c: any) => c.id === o.from_club)?.name} offre <strong>{o.money} M€</strong></span>
+                <span className="row">
+                  <button className="btn small" onClick={() => act(() => api(`me/${token}/offers/${o.id}`, { body: { accept: true } }), "Offerta accettata.")}>Accetta</button>
+                  <button className="btn ghost small" onClick={() => act(() => api(`me/${token}/offers/${o.id}`, { body: { accept: false } }), "Offerta rifiutata.")}>Rifiuta</button>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {outgoing.length > 0 && <p className="small muted">Le tue offerte: {outgoing.map((o: any) => `${d.clubs.find((c: any) => c.id === o.to_club)?.name} ${o.money} M€ (${o.status})`).join(" · ")}</p>}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- SQUADRA ---------------- */
 
 function ClubCard({ c, state }: { c: any; state?: any }) {
   const ratings = state?.ratings ?? c.ratings;
@@ -90,10 +362,9 @@ function ClubCard({ c, state }: { c: any; state?: any }) {
 function ClubTab({ d }: Ctx) {
   const mine = d.mine;
   if (!mine?.club) return null;
-  const c = { ...mine.club, owner: d.player.name };
   return (
     <>
-      <ClubCard c={c} state={mine.state} />
+      <ClubCard c={{ ...mine.club, owner: d.player.name }} state={mine.state} />
       <div className="panel">
         <h3>Rosa</h3>
         <p className="small muted">I nomi servono per marcatori e cronaca; la forza è quella dei reparti.</p>
@@ -106,166 +377,7 @@ function ClubTab({ d }: Ctx) {
   );
 }
 
-function MatchTab({ d, token, reload, clubsById, openClub, openMatch }: Ctx) {
-  const L = d.league, mine = d.mine;
-  const state = mine?.state;
-  const [choices, setChoices] = useState(state?.choices);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => { setChoices(state?.choices); }, [state?.choices?.modulo, state?.choices?.atteggiamento, state?.choices?.turnover, state?.choices?.discorso]);
-
-  const act = async (fn: () => Promise<any>, ok: string) => {
-    setBusy(true); setErr(null); setMsg(null);
-    try { await fn(); setMsg(ok); await reload(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
-  };
-
-  if (L.status === "setup") {
-    return (
-      <div className="panel">
-        <h2>In attesa del fischio d'inizio</h2>
-        <p>Il campionato parte quando tutti hanno creato il club e l'organizzatore lo avvia.</p>
-        {d.participants.filter((p: any) => !p.isCpu).map((p: any) => (
-          <div key={p.id} className="row spread small" style={{ padding: "4px 0" }}><span>{p.owner}</span><span className="muted">{p.status === "ready" ? "pronto" : "sta creando"}</span></div>
-        ))}
-      </div>
-    );
-  }
-  const myId = mine?.id;
-  const next = d.matches.find((m: any) => m.matchday === L.nextMatchday && (m.homeId === myId || m.awayId === myId));
-  const lastPlayed = [...d.matches].filter((m: any) => m.played && (m.homeId === myId || m.awayId === myId)).pop();
-  const confirmed = state?.confirmedFor === L.nextMatchday;
-
-  return (
-    <>
-      {L.status === "finished" && <SeasonEnd d={d} />}
-      {lastPlayed && (
-        <div className="panel">
-          <div className="row spread"><h3 style={{ margin: 0 }}>Ultima partita</h3><span className="small muted">Giornata {lastPlayed.matchday}</span></div>
-          <MatchLine m={lastPlayed} clubsById={clubsById} myId={myId} onClick={() => openMatch(lastPlayed.id)} />
-          <button className="btn small" onClick={() => openMatch(lastPlayed.id)}>Guarda gli highlights</button>
-        </div>
-      )}
-      {next && mine && (
-        <div className="panel">
-          <div className="row spread"><h2 style={{ margin: 0 }}>Giornata {L.nextMatchday}</h2><span className="small muted">{fmtDate(L.nextMatchDate)}, ore 21:00</span></div>
-          <MatchLine m={next} clubsById={clubsById} myId={myId} onClick={() => openClub(next.homeId === myId ? next.awayId : next.homeId)} />
-          <p className="small muted">{next.homeId === myId ? "In casa" : "In trasferta"} · tocca l'avversario per vedere la sua scheda.</p>
-
-          <div className="stack" style={{ marginTop: 8 }}>
-            <div><div className="row spread small"><span>Condizione</span><span>{state.cond}</span></div><Bar value={state.cond} color={state.cond < 60 ? "#e0343f" : "#7ee08a"} /></div>
-            <div><div className="row spread small"><span>Morale</span><span>{state.morale}</span></div><Bar value={state.morale} color="#8fd3ff" /></div>
-          </div>
-          {state.modifiers?.length > 0 && <p className="small" style={{ marginTop: 8 }}>{state.modifiers.map((m: any, i: number) => <span key={i} className="tag">{m.label}: {REPARTO_LABEL[m.rep as Reparto]} {m.delta}</span>)}</p>}
-          {state.campoSqualificato && <p className="small">Campo squalificato: niente fattore campo nella prossima partita in casa.</p>}
-        </div>
-      )}
-      {state?.pendingDecision === "fuoriclasse" && (
-        <div className="panel" style={{ borderColor: "#ffb31a" }}>
-          <h3>{mine.club.fuoriclasse?.name} vuole andare via</h3>
-          <p>Vendilo per 60 M€ (perdi il suo bonus) o tienilo (morale −10). Se non decidi entro le 21:00, resta.</p>
-          <div className="row">
-            <button className="btn small" disabled={busy} onClick={() => act(() => api(`me/${token}/decision`, { body: { sell: true } }), "Fuoriclasse venduto.")}>Vendi</button>
-            <button className="btn ghost small" disabled={busy} onClick={() => act(() => api(`me/${token}/decision`, { body: { sell: false } }), "Resta in squadra.")}>Tienilo</button>
-          </div>
-        </div>
-      )}
-      {next && mine && choices && (
-        <div className="panel">
-          <h2>Le tue scelte</h2>
-          {err && <div className="error">{err}</div>}
-          {msg && <div className="ok">{msg}</div>}
-          <Choice label="Modulo" value={choices.modulo} options={MODULI.map((m) => ({ id: m, label: m + (mine.club.preferredModule === m ? " ★" : "") }))} onChange={(v) => setChoices({ ...choices, modulo: v })} />
-          <p className="small muted" style={{ marginTop: -4 }}>★ modulo preferito dell'allenatore: +2 ad Attacco, Centrocampo e Difesa.</p>
-          <Choice label="Atteggiamento" value={choices.atteggiamento} options={ATTEGGIAMENTI} onChange={(v) => setChoices({ ...choices, atteggiamento: v })} />
-          <Choice label="Turnover" value={choices.turnover} options={[{ id: "nessuno", label: "Nessuno" }, { id: "parziale", label: "Parziale" }, { id: "massiccio", label: "Massiccio" }]} onChange={(v) => setChoices({ ...choices, turnover: v })} />
-          <Choice label="Discorso nello spogliatoio" value={choices.discorso} options={[{ id: "nessuno", label: "Nessuno" }, { id: "motivare", label: "Motivare" }, { id: "calmare", label: "Calmare" }]} onChange={(v) => setChoices({ ...choices, discorso: v })} />
-          <Hint choices={choices} />
-          <button className="btn block" disabled={busy} onClick={() => act(() => api(`me/${token}/choices`, { body: choices }), "Scelte confermate per stasera.")}>{confirmed ? "Aggiorna le scelte" : "Conferma le scelte"}</button>
-          <p className="small muted" style={{ marginTop: 8 }}>{confirmed ? "Scelte confermate: puoi cambiarle fino alle 21:00." : "Se non confermi, giochi con le scelte di ieri e senza discorso."}</p>
-        </div>
-      )}
-      {L.marketOpen && mine && <Market d={d} token={token} reload={reload} />}
-    </>
-  );
-}
-
-function Hint({ choices }: { choices: any }) {
-  const t: Record<string, string> = {
-    equilibrato: "Nessun effetto particolare.",
-    offensivo: "Segni di più (×1,2), ma concedi di più (×1,15).",
-    difensivo: "Segni meno (×0,8), concedi molto meno (×0,75).",
-    contropiede: "Concedi meno; se l'avversario attacca o pressa segni ×1,25.",
-    pressing: "Segni ×1,1 e concedi ×0,9, ma costa 15 di condizione invece di 10.",
-  };
-  const tv: Record<string, string> = { nessuno: "", parziale: "Parziale: −2 ai reparti di campo, +6 recupero.", massiccio: "Massiccio: i reparti di campo scendono verso la Panchina, +15 recupero." };
-  return <p className="small" style={{ background: "rgba(0,0,0,.25)", padding: "8px 10px", borderRadius: 8 }}>{t[choices.atteggiamento]} {tv[choices.turnover]}</p>;
-}
-
-function Choice({ label, value, options, onChange }: { label: string; value: string; options: { id: string; label: string }[]; onChange: (v: any) => void }) {
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <div className="small muted" style={{ marginBottom: 6 }}>{label}</div>
-      <div className="seg" role="group" aria-label={label}>
-        {options.map((o) => <button type="button" key={o.id} aria-pressed={value === o.id} onClick={() => onChange(o.id)}>{o.label}</button>)}
-      </div>
-    </div>
-  );
-}
-
-function Market({ d, token, reload }: { d: any; token: string; reload: () => Promise<void> }) {
-  const st = d.mine.state, myId = d.mine.id;
-  const [err, setErr] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [offer, setOffer] = useState<Record<string, string>>({});
-  const act = async (fn: () => Promise<any>, ok: string) => {
-    setErr(null); setMsg(null);
-    try { const r = await fn(); setMsg(r?.cpu === "rifiutata" ? "La CPU ha rifiutato: offri di più." : ok); await reload(); } catch (e: any) { setErr(e.message); }
-  };
-  const incoming = d.offers.filter((o: any) => o.to_club === myId && o.status === "aperta");
-  const outgoing = d.offers.filter((o: any) => o.from_club === myId);
-  const others = d.clubs.filter((c: any) => c.id !== myId && c.fuoriclasse);
-  return (
-    <div className="panel" style={{ borderColor: "#ffb31a" }}>
-      <h2>Mercato aperto</h2>
-      <p className="small">Budget {st.budget} M€ · operazioni usate {st.marketOps}/2 · chiude alla prossima giornata.</p>
-      {err && <div className="error">{err}</div>}
-      {msg && <div className="ok">{msg}</div>}
-      {REPARTI.map((r) => (
-        <div key={r} className="market-row">
-          <span>{REPARTO_LABEL[r]} <strong>{st.ratings[r]}</strong></span>
-            <button className="btn small" onClick={() => act(() => api(`me/${token}/market`, { body: { op: "buy", rep: r } }), `${REPARTO_LABEL[r]} +2.`)}>+2 · {marketCost(st.ratings[r])} M€</button>
-            <button className="btn ghost small" onClick={() => act(() => api(`me/${token}/market`, { body: { op: "sell", rep: r } }), `${REPARTO_LABEL[r]} −2.`)}>−2 · +{marketIncome(st.ratings[r])}</button>
-        </div>
-      ))}
-      <h3 style={{ marginTop: 16 }}>Fuoriclasse degli altri</h3>
-      {others.length === 0 && <p className="muted small">Nessun altro club ha un fuoriclasse.</p>}
-      {others.map((c: any) => (
-        <div key={c.id} className="row spread wrap-row" style={{ padding: "6px 0" }}>
-          <span className="small"><strong>{c.fuoriclasse.name}</strong> · {c.name} · +{c.fuoriclasse.bonus} {REPARTO_LABEL[c.fuoriclasse.ruolo as Reparto]}</span>
-          <span className="row">
-            <input type="number" min={1} style={{ width: 80 }} placeholder="M€" value={offer[c.id] ?? ""} onChange={(e) => setOffer({ ...offer, [c.id]: e.target.value })} aria-label={`Offerta per ${c.fuoriclasse.name}`} />
-            <button className="btn small" onClick={() => act(() => api(`me/${token}/offers`, { body: { to: c.id, money: Number(offer[c.id]) } }), "Offerta inviata.")}>Offri</button>
-          </span>
-        </div>
-      ))}
-      {incoming.length > 0 && <h3 style={{ marginTop: 16 }}>Offerte ricevute</h3>}
-      {incoming.map((o: any) => {
-        const from = d.clubs.find((c: any) => c.id === o.from_club);
-        return (
-          <div key={o.id} className="row spread" style={{ padding: "6px 0" }}>
-            <span className="small">{from?.name} offre <strong>{o.money} M€</strong> per il tuo fuoriclasse</span>
-            <span className="row">
-              <button className="btn small" onClick={() => act(() => api(`me/${token}/offers/${o.id}`, { body: { accept: true } }), "Offerta accettata.")}>Accetta</button>
-              <button className="btn ghost small" onClick={() => act(() => api(`me/${token}/offers/${o.id}`, { body: { accept: false } }), "Offerta rifiutata.")}>Rifiuta</button>
-            </span>
-          </div>
-        );
-      })}
-      {outgoing.length > 0 && <p className="small muted" style={{ marginTop: 10 }}>Le tue offerte: {outgoing.map((o: any) => `${d.clubs.find((c: any) => c.id === o.to_club)?.name} ${o.money} M€ (${o.status})`).join(" · ")}</p>}
-    </div>
-  );
-}
+/* ---------------- CLASSIFICA / RISULTATI / NOTIZIE ---------------- */
 
 function MatchLine({ m, clubsById, myId, onClick }: { m: any; clubsById: Map<string, any>; myId?: string; onClick?: () => void }) {
   const h = clubsById.get(m.homeId), a = clubsById.get(m.awayId);
@@ -286,20 +398,23 @@ function TableTab({ d, openClub }: Ctx) {
       <div className="panel">
         <h2>Classifica</h2>
         {d.table.length === 0 ? <p className="muted">La classifica compare quando parte il campionato.</p> : (
-          <table className="table">
-            <thead><tr><th>#</th><th>Squadra</th><th>G</th><th>DR</th><th>Pt</th></tr></thead>
-            <tbody>
-              {d.table.map((r: any, i: number) => (
-                <tr key={r.id} className={r.id === myId ? "me" : ""} onClick={() => openClub(r.id)} style={{ cursor: "pointer" }}>
-                  <td>{i + 1}</td>
-                  <td><span className="swatch" style={{ background: r.colors[0] }} />{r.name}<div className="small muted">{r.owner} <Form form={r.form} /></div></td>
-                  <td>{r.g}</td>
-                  <td>{r.gf - r.gs > 0 ? "+" : ""}{r.gf - r.gs}</td>
-                  <td className="pts">{r.pt}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <>
+            <table className="table">
+              <thead><tr><th>#</th><th>Squadra</th><th>G</th><th>DR</th><th>Pt</th></tr></thead>
+              <tbody>
+                {d.table.map((r: any, i: number) => (
+                  <tr key={r.id} className={r.id === myId ? "me" : ""} onClick={() => openClub(r.id)} style={{ cursor: "pointer" }}>
+                    <td>{i + 1}</td>
+                    <td><span className="swatch" style={{ background: r.colors[0] }} />{r.name}<div className="small muted">{r.owner} <Form form={r.form} /></div></td>
+                    <td>{r.g}</td>
+                    <td>{r.gf - r.gs > 0 ? "+" : ""}{r.gf - r.gs}</td>
+                    <td className="pts">{r.pt}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="small muted" style={{ marginTop: 8 }}>Tocca una squadra per vedere la sua scheda.</p>
+          </>
         )}
       </div>
       {d.league.history.length > 0 && (
@@ -318,20 +433,24 @@ function TableTab({ d, openClub }: Ctx) {
   );
 }
 
-function CalendarTab({ d, clubsById, openMatch }: Ctx) {
+function ResultsTab({ d, clubsById, openMatch, openSerata }: Ctx) {
   const myId = d.mine?.id;
   const byMd = useMemo(() => {
     const m = new Map<number, any[]>();
     for (const x of d.matches) { if (!m.has(x.matchday)) m.set(x.matchday, []); m.get(x.matchday)!.push(x); }
     return [...m.entries()];
   }, [d.matches]);
-  if (!byMd.length) return <div className="panel"><h2>Calendario</h2><p className="muted">Il calendario si genera all'avvio del campionato.</p></div>;
+  if (!byMd.length) return <div className="panel"><h2>Risultati</h2><p className="muted">Il calendario si genera all'avvio del campionato.</p></div>;
   return (
     <div className="panel">
-      <h2>Calendario</h2>
+      <h2>Risultati e calendario</h2>
+      <p className="small muted">Tocca una partita giocata per gli highlights.</p>
       {byMd.map(([md, ms]) => (
-        <div key={md} style={{ marginBottom: 14 }}>
-          <div className="small muted">Giornata {md}{md === d.league.totalMatchdays / 2 ? " · fine andata" : ""}</div>
+        <div key={md} style={{ marginBottom: 16 }}>
+          <div className="row spread">
+            <div className="small muted">Giornata {md}{md === d.league.totalMatchdays / 2 ? " · fine andata" : ""}</div>
+            {md <= d.league.matchdayPlayed && <button className="btn ghost small" onClick={() => openSerata(md)}>Rivedi la serata</button>}
+          </div>
           {ms.map((m: any) => <MatchLine key={m.id} m={m} clubsById={clubsById} myId={myId} onClick={m.played ? () => openMatch(m.id) : undefined} />)}
         </div>
       ))}
@@ -398,7 +517,7 @@ function MatchModal({ token, id, clubsById, onClose }: { token: string; id: stri
               <div className="small muted">Giornata {m.matchday}{m.data.derby ? " · derby" : ""}</div>
               <div className="row" style={{ justifyContent: "center", gap: 14, margin: "6px 0" }}>
                 <Crest name={h.name} colors={h.colors} shape={h.crest} size={44} />
-                <span style={{ fontFamily: "var(--display)", fontWeight: 900, fontSize: 44 }}>{m.hg} - {m.ag}</span>
+                <span className="show-score">{m.hg} - {m.ag}</span>
                 <Crest name={a.name} colors={a.colors} shape={a.crest} size={44} />
               </div>
               <div className="small">{h.name} – {a.name}</div>

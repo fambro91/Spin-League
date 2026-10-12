@@ -125,52 +125,55 @@ const EVENT_REPS: Reparto[] = ["por", "dif", "cen", "att", "pan"];
 export type ClubBundle = { id: string; club: Club; state: ClubState; isCpu: boolean };
 
 /** Gira la ruota evento per un club a caso. matchday = giornata appena giocata. */
-export function dailyEvent(rng: Rng, clubs: ClubBundle[], matchday: number): { clubId: string | null; eventId: string; text: string } {
+export type DayEvent = { clubId: string | null; eventId: string; eventIndex: number; text: string };
+
+export function dailyEvent(rng: Rng, clubs: ClubBundle[], matchday: number): DayEvent {
   for (let tries = 0; tries < 12; tries++) {
-    const ev = DAILY_EVENTS[rng.weighted(DAILY_EVENTS)];
+    const evIdx = rng.weighted(DAILY_EVENTS);
+    const ev = DAILY_EVENTS[evIdx];
     const b = rng.pick(clubs);
     const { club: c, state: s } = b;
     const rep = rng.pick(EVENT_REPS);
     const R = REPARTO_LABEL[rep];
     switch (ev.id) {
-      case "tranquilla": return { clubId: null, eventId: ev.id, text: "Settimana tranquilla: nessuna notizia." };
+      case "tranquilla": return { clubId: null, eventId: ev.id, eventIndex: evIdx, text: "Settimana tranquilla: nessuna notizia." };
       case "infortunio":
         s.modifiers.push({ rep, delta: -5, untilMatchday: matchday + 3, label: "Infortunio" });
-        return { clubId: b.id, eventId: ev.id, text: `${c.name}: infortunio, ${R} −5 per 3 giornate.` };
+        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: infortunio, ${R} −5 per 3 giornate.` };
       case "polemica":
         s.morale = clamp(s.morale - 10, 0, 100);
-        return { clubId: b.id, eventId: ev.id, text: `${c.name}: polemica arbitrale, morale −10.` };
+        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: polemica arbitrale, morale −10.` };
       case "festa":
         s.morale = clamp(s.morale + 10, 0, 100);
-        return { clubId: b.id, eventId: ev.id, text: `${c.name}: tifosi in festa, morale +10.` };
+        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: tifosi in festa, morale +10.` };
       case "squalifica":
         s.modifiers.push({ rep, delta: -4, untilMatchday: matchday + 1, label: "Squalifica" });
-        return { clubId: b.id, eventId: ev.id, text: `${c.name}: squalifica, ${R} −4 nella prossima giornata.` };
+        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: squalifica, ${R} −4 nella prossima giornata.` };
       case "rissa":
         s.morale = clamp(s.morale - 15, 0, 100);
-        return { clubId: b.id, eventId: ev.id, text: `${c.name}: rissa nello spogliatoio, morale −15.` };
+        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: rissa nello spogliatoio, morale −15.` };
       case "mecenate":
         s.budget += 30;
-        return { clubId: b.id, eventId: ev.id, text: `${c.name}: arriva un mecenate, +30 M€.` };
+        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: arriva un mecenate, +30 M€.` };
       case "talento":
         s.ratings[rep] = clamp(s.ratings[rep] + 3, 40, 99);
-        return { clubId: b.id, eventId: ev.id, text: `${c.name}: talento dalla Primavera, ${R} +3.` };
+        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: talento dalla Primavera, ${R} +3.` };
       case "fuga":
         if (!c.fuoriclasse) continue;
         if (b.isCpu) {
-          if (rng.chance(0.5)) { sellFuoriclasse(c, s); return { clubId: b.id, eventId: ev.id, text: `${c.name}: il fuoriclasse è stato venduto per 60 M€.` }; }
+          if (rng.chance(0.5)) { sellFuoriclasse(c, s); return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: il fuoriclasse è stato venduto per 60 M€.` }; }
           s.morale = clamp(s.morale - 10, 0, 100);
-          return { clubId: b.id, eventId: ev.id, text: `${c.name}: il fuoriclasse resta, ma lo spogliatoio è nervoso (morale −10).` };
+          return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: il fuoriclasse resta, ma lo spogliatoio è nervoso (morale −10).` };
         }
         s.pendingDecision = "fuoriclasse";
-        return { clubId: b.id, eventId: ev.id, text: `${c.name}: ${c.fuoriclasse.name} vuole andare via. Il presidente deve decidere.` };
+        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: ${c.fuoriclasse.name} vuole andare via. Il presidente deve decidere.` };
       case "campo":
         if (!c.fans.ultras) continue;
         s.campoSqualificato = true;
-        return { clubId: b.id, eventId: ev.id, text: `${c.name}: campo squalificato, prossima partita in casa senza fattore campo.` };
+        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: campo squalificato, prossima partita in casa senza fattore campo.` };
     }
   }
-  return { clubId: null, eventId: "tranquilla", text: "Settimana tranquilla: nessuna notizia." };
+  return { clubId: null, eventId: "tranquilla", eventIndex: 0, text: "Settimana tranquilla: nessuna notizia." };
 }
 
 export function sellFuoriclasse(c: Club, s: ClubState) {

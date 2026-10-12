@@ -52,7 +52,7 @@ async function leagueView(env: Env, l: LeagueRow, myClubId: string | null) {
       nextMatchDate: l.status === "running" ? matchdayDate(l, next) : null, telegram: !!l.tg_chat,
       history: JSON.parse(l.history || "[]"),
     },
-    participants: rows.map((r) => ({ id: r.id, owner: r.owner, status: r.status, isCpu: !!r.is_cpu })),
+    participants: rows.map((r) => ({ id: r.id, owner: r.owner, playerId: r.player_id, status: r.status, isCpu: !!r.is_cpu, confirmed: r.state ? JSON.parse(r.state).confirmedFor === next : false })),
     clubs: bundles.map(publicClub),
     table,
     matches: matches.map((m) => ({ id: m.id, matchday: m.matchday, homeId: m.home_id, awayId: m.away_id, played: !!m.played, hg: m.home_goals, ag: m.away_goals })),
@@ -282,6 +282,22 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
       if (!l.market_open) throw new HttpError(400, "Il mercato è chiuso.");
       if (!b.accept) { await env.DB.prepare("UPDATE offers SET status = 'rifiutata' WHERE id = ?").bind(o.id).run(); return json({ ok: true }); }
       return json(await acceptOffer(env, l, o.from_club, o.to_club, o.money, o.id));
+    }
+    if (action === "day" && parts[3] && m === "GET") {
+      const md = Number(parts[3]);
+      if (!(md >= 1 && md <= l.matchday_played)) throw new HttpError(404, "Giornata non ancora giocata.");
+      const { results: ms } = await env.DB.prepare("SELECT * FROM matches WHERE league_id = ? AND season = ? AND matchday = ? AND played = 1").bind(l.id, l.season, md).all<MatchRow>();
+      const day = await env.DB.prepare("SELECT data FROM days WHERE league_id = ? AND season = ? AND matchday = ?").bind(l.id, l.season, md).first<{ data: string }>();
+      const prev = md > 1 ? await env.DB.prepare("SELECT data FROM days WHERE league_id = ? AND season = ? AND matchday = ?").bind(l.id, l.season, md - 1).first<{ data: string }>() : null;
+      const chron = await env.DB.prepare("SELECT title, body FROM news WHERE league_id = ? AND season = ? AND matchday = ? AND kind = 'cronaca' ORDER BY id DESC LIMIT 1").bind(l.id, l.season, md).first<{ title: string; body: string }>();
+      return json({
+        matchday: md,
+        date: matchdayDate(l, md),
+        matches: ms.map((x) => ({ id: x.id, homeId: x.home_id, awayId: x.away_id, hg: x.home_goals, ag: x.away_goals, data: JSON.parse(x.data!) })),
+        day: day ? JSON.parse(day.data) : null,
+        prevTable: prev ? JSON.parse(prev.data).table : null,
+        chronicle: chron,
+      });
     }
     if (action === "match" && parts[3] && m === "GET") {
       const mt = await env.DB.prepare("SELECT * FROM matches WHERE id = ? AND league_id = ?").bind(parts[3], l.id).first<MatchRow>();

@@ -136,13 +136,13 @@ export function Replay({ highlights, home, away, seed }: { highlights: MatchEven
   return (
     <div className="replay">
       <canvas ref={ref} role="img" aria-label={`Highlight ${idx + 1} di ${highlights.length}`} />
-      <div className="row spread" style={{ marginTop: 10 }}>
-        <button className="btn ghost small" disabled={idx === 0} onClick={() => { setIdx(idx - 1); setPlaying(true); }}>Precedente</button>
+      <div className="replay-ctrl">
+        <button className="btn ghost small" disabled={idx === 0} onClick={() => { setIdx(idx - 1); setPlaying(true); }}aria-label="Highlight precedente">‹ Prec.</button>
         <span className="small muted" style={{ whiteSpace: "nowrap" }}>{idx + 1} / {highlights.length}</span>
         {playing
           ? <button className="btn ghost small" onClick={() => setPlaying(false)}>Pausa</button>
           : <button className="btn small" onClick={() => { if (idx === highlights.length - 1) setIdx(0); t0.current = performance.now(); setPlaying(true); }}>{idx === highlights.length - 1 ? "Rivedi" : "Riprendi"}</button>}
-        <button className="btn ghost small" disabled={idx >= highlights.length - 1} onClick={() => { setIdx(idx + 1); setPlaying(true); }}>Successivo</button>
+        <button className="btn ghost small" disabled={idx >= highlights.length - 1} onClick={() => { setIdx(idx + 1); setPlaying(true); }}aria-label="Highlight successivo">Succ. ›</button>
       </div>
     </div>
   );
