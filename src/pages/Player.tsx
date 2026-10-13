@@ -7,6 +7,7 @@ import { Serata, seenKey } from "./Serata";
 import { AgendaCard, ChallengeSheet, DilemmaSheet, ManagementPanel, PredictionsSheet, PressSheet } from "./Agenda";
 import { Bar, Crest, Form, Radar, ScoreHead } from "../components/ClubBits";
 import { Replay } from "../components/Replay";
+import { LeagueStats } from "../components/LeagueStats";
 import { Logo } from "../components/Logo";
 import { AppBar } from "../components/AppBar";
 import { IcBall, IcBell, IcBoard, IcCalendar, IcChat, IcCompass, IcNews, IcRotate, IcShield, IcGear, IcStar, IcTrophy, IcWarn } from "../components/Icons";
@@ -437,7 +438,8 @@ function ClubTab({ d, token, reload }: Ctx) {
   }
   const order: Record<string, number> = { POR: 0, DIF: 1, CEN: 2, ATT: 3 };
   const roster = [...mine.club.roster].sort((x: any, y: any) => order[x.ruolo] - order[y.ruolo]);
-  const goalsOf = new Map<string, number>((d.myScorers ?? []).map((s: any) => [s.name, s.goals]));
+  const statOf = new Map<string, { goals: number; assists: number }>((d.myScorers ?? []).map((s: any) => [s.name, s]));
+  const statTxt = (n: string) => { const s = statOf.get(n); if (!s) return null; const parts = [s.goals ? `${s.goals} gol` : "", s.assists ? `${s.assists} assist` : ""].filter(Boolean); return parts.length ? <span className="small muted"> · {parts.join(" · ")}</span> : null; };
   return (
     <>
       <AppBar title="Il tuo club" />
@@ -453,7 +455,7 @@ function ClubTab({ d, token, reload }: Ctx) {
             {roster.map((pl: any, i: number) => (
               <div className="roster-row" key={pl.name}>
                 <span className="muted">{i + 1}.</span>
-                <span>{pl.name}{mine.club.fuoriclasse?.name === pl.name ? <span style={{ color: "var(--amber)" }}> ★</span> : null}{goalsOf.get(pl.name) ? <span className="small muted"> · {goalsOf.get(pl.name)} gol</span> : null}</span>
+                <span>{pl.name}{mine.club.fuoriclasse?.name === pl.name ? <span style={{ color: "var(--amber)" }}> ★</span> : null}{statTxt(pl.name)}</span>
                 <span className="small muted">{pl.ruolo}</span>
               </div>
             ))}
@@ -467,9 +469,9 @@ function ClubTab({ d, token, reload }: Ctx) {
               <div className="r"><span>Gol fatti · subiti</span><span>{gf} · {gs}</span></div>
               <div className="r"><span>Ultime partite</span><span><Form form={mine.state.lastResults ?? []} /></span></div>
             </div>
-            <h3 style={{ marginTop: 14 }}>Marcatori</h3>
-            {(d.myScorers ?? []).length === 0 ? <p className="small muted">Ancora nessun gol.</p> : (d.myScorers as any[]).slice(0, 8).map((s, i) => (
-              <div className="roster-row" key={s.name}><span className="muted">{i + 1}.</span><span>{s.name}</span><strong>{s.goals}</strong></div>
+            <h3 style={{ marginTop: 14 }}>Marcatori e assist</h3>
+            {(d.myScorers ?? []).length === 0 ? <p className="small muted">Ancora nessun gol.</p> : (d.myScorers as any[]).slice(0, 10).map((s, i) => (
+              <div className="roster-row" key={s.name}><span className="muted">{i + 1}.</span><span>{s.name}</span><span className="small"><strong>{s.goals}</strong> G · <strong>{s.assists ?? 0}</strong> A</span></div>
             ))}
           </>
         )}
@@ -493,7 +495,7 @@ function MatchLine({ m, clubsById, myId, onClick }: { m: any; clubsById: Map<str
   );
 }
 
-function TableTab({ d, openClub }: Ctx) {
+function TableTab({ d, openClub, clubsById }: Ctx) {
   const myId = d.mine?.id;
   return (
     <>
@@ -519,14 +521,7 @@ function TableTab({ d, openClub }: Ctx) {
           </>
         )}
       </div>
-      {d.clubs.some((c: any) => (c.predPoints ?? 0) > 0) && (
-        <div className="panel">
-          <h2>Classifica pronostici</h2>
-          {[...d.clubs].filter((c: any) => !c.isCpu).sort((a: any, b: any) => (b.predPoints ?? 0) - (a.predPoints ?? 0)).map((c: any, i: number) => (
-            <div key={c.id} className="roster-row"><span className="muted">{i + 1}.</span><span>{c.owner} <span className="small muted">· {c.name}</span></span><strong>{c.predPoints ?? 0}</strong></div>
-          ))}
-        </div>
-      )}
+      {d.stats && <LeagueStats d={d} clubsById={clubsById} />}
       {d.league.history.length > 0 && (
         <div className="panel">
           <h2>Albo d'oro</h2>
@@ -628,7 +623,7 @@ function MatchModal({ token, id, clubsById, onClose }: { token: string; id: stri
             <div className="panel" style={{ marginTop: 14 }}>
               <h3>Tabellino</h3>
               {m.data.events.filter((e: any) => e.type === "gol" || e.type === "rosso").map((e: any, i: number) => (
-                <div key={i} className="small" style={{ textAlign: e.team === "home" ? "left" : "right" }}>{e.type === "gol" ? "⚽" : "🟥"} {e.minute}' {e.player}</div>
+                <div key={i} className="small" style={{ textAlign: e.team === "home" ? "left" : "right" }}>{e.type === "gol" ? "⚽" : "🟥"} {e.minute}' <strong>{e.player}</strong>{e.type === "gol" && e.schema === "rigore" ? <span className="muted"> (rig.)</span> : null}{e.assist ? <span className="muted"> · assist {e.assist}</span> : null}</div>
               ))}
               <p className="small muted" style={{ marginTop: 8 }}>Tattiche: {h.name} {m.data.choices[0].modulo} {m.data.choices[0].atteggiamento} · {a.name} {m.data.choices[1].modulo} {m.data.choices[1].atteggiamento}</p>
             </div>

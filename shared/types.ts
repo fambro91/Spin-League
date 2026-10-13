@@ -150,6 +150,11 @@ export type MatchEvent = {
   team: "home" | "away";
   type: "gol" | "parata" | "palo" | "fuori" | "rosso" | "giallo";
   player?: string;
+  /** Ruolo di chi tira/segna (per gli highlights). */
+  role?: "POR" | "DIF" | "CEN" | "ATT";
+  /** Autore dell'ultimo passaggio (solo gol). */
+  assist?: string;
+  assistRole?: "POR" | "DIF" | "CEN" | "ATT";
   schema?: string;
   score?: [number, number];
 };

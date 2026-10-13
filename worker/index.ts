@@ -1,8 +1,9 @@
 import { ensureSchema, nowIso, romeNow, sha256, type Env, type LeagueRow, type PlayerRow, type ClubRow, type MatchRow } from "./db";
 import {
   addNews, bundle, cronTick, ensurePlayerClub, formatDate, getLeague, id, loadClubs, loadMatches, matchdayDate, newSeason,
-  playMatchday, publicClub, spin, startLeague,
+  playMatchday, publicClub, spin, startLeague, statMatches,
 } from "./game";
+import { leagueStats } from "../shared/stats";
 import { randomToken } from "../shared/rng";
 import { computeClub, initialState, clamp } from "../shared/club";
 import { marketOp, sellFuoriclasse, standings } from "../shared/league";
@@ -60,6 +61,7 @@ async function leagueView(env: Env, l: LeagueRow, myClubId: string | null) {
     matches: matches.map((m) => ({ id: m.id, matchday: m.matchday, homeId: m.home_id, awayId: m.away_id, played: !!m.played, hg: m.home_goals, ag: m.away_goals })),
     news,
     myClubId,
+    stats: l.status === "setup" ? null : leagueStats(statMatches(matches)),
   };
 }
 
@@ -215,15 +217,16 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
         const { results: chs } = await env.DB.prepare("SELECT * FROM challenges WHERE league_id = ? AND season = ? AND matchday = ? AND (from_club = ? OR to_club = ?)").bind(l.id, l.season, md, c.id, c.id).all();
         agenda = { md, oppId, oppHuman, challenge: chs[0] ?? null };
       }
-      let myScorers: { name: string; goals: number }[] = [];
+      let myScorers: { name: string; goals: number; assists: number }[] = [];
       if (c && c.status === "ready" && l.matchday_played > 0) {
         const { results: mm } = await env.DB.prepare("SELECT home_id, away_id, data FROM matches WHERE league_id = ? AND season = ? AND played = 1 AND (home_id = ? OR away_id = ?)").bind(l.id, l.season, c.id, c.id).all<{ home_id: string; away_id: string; data: string }>();
-        const tally = new Map<string, number>();
+        const tally = new Map<string, { name: string; goals: number; assists: number }>();
+        const get = (n: string) => { let t = tally.get(n); if (!t) { t = { name: n, goals: 0, assists: 0 }; tally.set(n, t); } return t; };
         for (const x of mm) {
           const side = x.home_id === c.id ? "home" : "away";
-          for (const e of JSON.parse(x.data).events ?? []) if (e.type === "gol" && e.team === side) tally.set(e.player, (tally.get(e.player) ?? 0) + 1);
+          for (const e of JSON.parse(x.data).events ?? []) if (e.type === "gol" && e.team === side) { get(e.player).goals++; if (e.assist) get(e.assist).assists++; }
         }
-        myScorers = [...tally.entries()].map(([name, goals]) => ({ name, goals })).sort((a, b) => b.goals - a.goals);
+        myScorers = [...tally.values()].sort((a, b) => b.goals - a.goals || b.assists - a.assists);
       }
       return json({ ...view, player: { id: p.id, name: p.name }, mine, offers, myScorers, agenda, now: romeNow() });
     }

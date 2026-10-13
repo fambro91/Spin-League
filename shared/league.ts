@@ -213,7 +213,7 @@ export function marketOp(s: ClubState, op: "buy" | "sell", rep: Reparto): string
 
 export type Award = { title: string; clubId: string | null; text: string };
 
-export function seasonAwards(rows: Row[], clubs: ClubBundle[], scorers: Map<string, { name: string; clubId: string; goals: number }>): Award[] {
+export function seasonAwards(rows: Row[], clubs: ClubBundle[], scorers: Map<string, { name: string; clubId: string; goals: number }>, topAssist?: { name: string; clubId: string; assists: number }): Award[] {
   const byId = new Map(clubs.map((c) => [c.id, c]));
   const awards: Award[] = [];
   const champ = rows[0];
@@ -222,6 +222,7 @@ export function seasonAwards(rows: Row[], clubs: ClubBundle[], scorers: Map<stri
   if (last) awards.push({ title: "Cucchiaio di legno", clubId: last.id, text: `${last.name} (${last.owner})` });
   const top = [...scorers.values()].sort((a, b) => b.goals - a.goals)[0];
   if (top) awards.push({ title: "Capocannoniere", clubId: top.clubId, text: `${top.name}, ${top.goals} gol (${byId.get(top.clubId)?.club.name ?? ""})` });
+  if (topAssist) awards.push({ title: "Re degli assist", clubId: topAssist.clubId, text: `${topAssist.name}, ${topAssist.assists} assist (${byId.get(topAssist.clubId)?.club.name ?? ""})` });
   const bestDef = [...rows].sort((a, b) => a.gs - b.gs)[0];
   if (bestDef) awards.push({ title: "Miglior difesa", clubId: bestDef.id, text: `${bestDef.name}, ${bestDef.gs} gol subiti` });
   const expected = [...clubs].sort((a, b) => b.club.voto - a.club.voto).map((c) => c.id);

@@ -2,7 +2,7 @@ import type { Env } from "./db";
 
 export type MatchSummary = {
   home: string; away: string; hg: number; ag: number; derby: boolean;
-  scorers: { team: string; player: string; minute: number }[];
+  scorers: { team: string; player: string; minute: number; assist?: string; rigore?: boolean }[];
   reds: { team: string; player: string; minute: number }[];
   tactics: [string, string];
 };
@@ -33,7 +33,7 @@ export function templateChronicle(d: DaySummary): { title: string; body: string 
       : `Giornata ${d.matchday}`;
   const parts: string[] = [];
   for (const m of d.matches) {
-    const sc = m.scorers.map((s) => `${s.player} ${s.minute}'`).join(", ");
+    const sc = m.scorers.map((s) => `${s.player} ${s.minute}'${s.rigore ? " (rig.)" : s.assist ? ` (assist ${s.assist})` : ""}`).join(", ");
     parts.push(`${line(m)}${m.derby ? " (derby)" : ""}${sc ? ` — ${sc}` : ""}`);
   }
   if (d.events.length) parts.push("Dalle società: " + d.events.join(" "));
@@ -52,7 +52,7 @@ export async function aiChronicle(env: Env, d: DaySummary): Promise<{ title: str
     ultima_giornata: d.final,
     partite: d.matches.map((m) => ({
       risultato: line(m), derby: m.derby,
-      marcatori: m.scorers.map((s) => `${s.player} (${s.team}) ${s.minute}'`),
+      marcatori: m.scorers.map((s) => `${s.player} (${s.team}) ${s.minute}'${s.rigore ? ", su rigore" : s.assist ? `, assist di ${s.assist}` : ""}`),
       espulsi: m.reds.map((s) => `${s.player} (${s.team}) ${s.minute}'`),
       tattiche: { [m.home]: m.tactics[0], [m.away]: m.tactics[1] },
     })),

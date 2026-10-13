@@ -1,3 +1,4 @@
+import { leagueStats, type StatMatch } from "../shared/stats";
 import type { Env, LeagueRow, ClubRow, MatchRow, PlayerRow } from "./db";
 import { addDays, nowIso, romeNow } from "./db";
 import type { Club, ClubState, CreationState, MatchResult, Reparto } from "../shared/types";
@@ -22,6 +23,13 @@ export async function loadClubs(env: Env, l: LeagueRow): Promise<(ClubRow & { ow
     "SELECT c.*, COALESCE(p.name, 'CPU') AS owner FROM clubs c LEFT JOIN players p ON p.id = c.player_id WHERE c.league_id = ? AND c.season = ? ORDER BY c.created_at",
   ).bind(l.id, l.season).all<ClubRow & { owner: string }>();
   return results;
+}
+
+export function statMatches(ms: MatchRow[]): StatMatch[] {
+  return ms.filter((m) => m.played && m.data).map((m) => {
+    const d = JSON.parse(m.data!);
+    return { homeId: m.home_id, awayId: m.away_id, hg: m.home_goals!, ag: m.away_goals!, events: d.events ?? [], stats: d.stats };
+  });
 }
 
 export async function loadMatches(env: Env, l: LeagueRow) {
@@ -177,12 +185,12 @@ async function playClaimed(env: Env, l: LeagueRow, md: number): Promise<{ matchd
     }
     const data = { ...res, choices: [hc, ac], derby };
     stmts.push(env.DB.prepare("UPDATE matches SET played = 1, home_goals = ?, away_goals = ?, data = ? WHERE id = ?").bind(res.homeGoals, res.awayGoals, JSON.stringify(data), m.id));
-    m.played = 1; m.home_goals = res.homeGoals; m.away_goals = res.awayGoals;
+    m.played = 1; m.home_goals = res.homeGoals; m.away_goals = res.awayGoals; m.data = JSON.stringify(data);
     const nameOf = (side: "home" | "away") => (side === "home" ? H.club.name : A.club.name);
     const tact = (c: typeof hc, cl: typeof H.club) => `allenatore ${cl.coachName ?? cl.coachLabel}: ${c.modulo}, ${c.atteggiamento}${c.turnover !== "nessuno" ? `, turnover ${c.turnover}` : ""}`;
     summaries.push({
       home: H.club.name, away: A.club.name, hg: res.homeGoals, ag: res.awayGoals, derby,
-      scorers: res.events.filter((e) => e.type === "gol").map((e) => ({ team: nameOf(e.team), player: e.player!, minute: e.minute })),
+      scorers: res.events.filter((e) => e.type === "gol").map((e) => ({ team: nameOf(e.team), player: e.player!, minute: e.minute, assist: e.assist, rigore: e.schema === "rigore" })),
       reds: res.events.filter((e) => e.type === "rosso").map((e) => ({ team: nameOf(e.team), player: e.player!, minute: e.minute })),
       tactics: [tact(hc, H.club), tact(ac, A.club)],
     });
@@ -250,26 +258,9 @@ async function playClaimed(env: Env, l: LeagueRow, md: number): Promise<{ matchd
 
   let history = JSON.parse(l.history || "[]");
   if (final) {
-    const scorers = new Map<string, { name: string; clubId: string; goals: number }>();
-    for (const m of allMatches) {
-      if (!m.played) continue;
-      const data = m.id && m.data ? JSON.parse(m.data) : null;
-      const evs = data?.events ?? [];
-      for (const e of evs) if (e.type === "gol") {
-        const cid = e.team === "home" ? m.home_id : m.away_id;
-        const k = cid + e.player;
-        const cur = scorers.get(k) ?? { name: e.player, clubId: cid, goals: 0 };
-        cur.goals++; scorers.set(k, cur);
-      }
-    }
-    // i dati delle partite di oggi non sono ancora salvati in m.data: li aggiungo
-    for (const s of summaries) for (const sc of s.scorers) {
-      const cid = [...clubs.values()].find((b) => b.club.name === sc.team)!.id;
-      const k = cid + sc.player;
-      const cur = scorers.get(k) ?? { name: sc.player, clubId: cid, goals: 0 };
-      cur.goals++; scorers.set(k, cur);
-    }
-    const awards = seasonAwards(rowsS, list, scorers);
+    const ls = leagueStats(statMatches(allMatches));
+    const scorers = new Map(ls.scorers.map((p) => [p.clubId + p.name, p]));
+    const awards = seasonAwards(rowsS, list, scorers, ls.assists[0]);
     history.push({
       season: l.season,
       table: rowsS.map((r, i) => ({ pos: i + 1, id: r.id, name: r.name, owner: r.owner, pt: r.pt, gf: r.gf, gs: r.gs, voto: clubs.get(r.id)!.club.voto })),
@@ -359,7 +350,7 @@ export function publicClub(b: ClubBundle & { owner: string }) {
     id: b.id, owner: b.owner, isCpu: b.isCpu, name: c.name, colors: c.colors, crest: c.crest, city: c.city, blasone: c.blasone,
     ratings: b.state.ratings, voto: c.voto, classe: c.classe, coachLabel: c.coachLabel, coachName: c.coachName ?? null, preferredModule: c.preferredModule,
     stadium: c.stadium.label, fans: c.fans.label, fuoriclasse: c.fuoriclasse, sponsor: c.sponsor, form: b.state.lastResults, predPoints: b.state.predPoints ?? 0, investments: b.state.investments ?? [],
-    initialRatings: c.ratings,
+    initialRatings: c.ratings, roster: c.roster,
   };
 }
 

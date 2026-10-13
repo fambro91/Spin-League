@@ -78,6 +78,17 @@ function pickScorer(rng: Rng, roster: RosterPlayer[], fuori: string | undefined)
   return weighted[rng.weighted(weighted)].p;
 }
 
+export const ASSIST_RATE = 0.7;
+/** Ultimo passaggio: centrocampisti 45%, attaccanti 35%, difensori 20%; fuoriclasse peso doppio; mai il marcatore. */
+function pickAssist(rng: Rng, roster: RosterPlayer[], scorer: string, fuori: string | undefined): RosterPlayer | null {
+  const W = { CEN: 45, ATT: 35, DIF: 20, POR: 0 } as const;
+  const pool = roster.filter((p) => p.name !== scorer && p.ruolo !== "POR");
+  if (!pool.length) return null;
+  const n = (r: RosterPlayer["ruolo"]) => pool.filter((p) => p.ruolo === r).length || 1;
+  const ws = pool.map((p) => ({ p, weight: (W[p.ruolo] / n(p.ruolo)) * (p.name === fuori ? 2 : 1) }));
+  return ws[rng.weighted(ws)].p;
+}
+
 function pickSchema(rng: Rng, t: TeamCtx, r: Ratings, scorer: RosterPlayer, isGoal: boolean): string {
   if (isGoal && rng.chance(0.08)) return "rigore";
   const wide = ["4-3-3", "3-4-3", "4-4-2", "3-5-2", "5-3-2"].includes(t.choices.modulo);
@@ -131,17 +142,25 @@ export function simulateMatch(home: TeamCtx, away: TeamCtx, matchday: number, se
       for (let g = 0; g < goals; g++) {
         const scorer = pickScorer(rng, me.t.club.roster, me.t.club.fuoriclasse?.name);
         me.goals++;
-        events.push({ minute: b * 15 + rng.int(1, 15), team: side, type: "gol", player: scorer.name, schema: pickSchema(rng, me.t, me.r, scorer, true) });
+        events.push({ minute: b * 15 + rng.int(1, 15), team: side, type: "gol", player: scorer.name, role: scorer.ruolo, schema: pickSchema(rng, me.t, me.r, scorer, true) });
       }
       const misses = rng.poisson(lambda * 1.5);
       for (let m = 0; m < misses; m++) {
         const shooter = pickScorer(rng, me.t.club.roster, me.t.club.fuoriclasse?.name);
         const kind = rng.weighted([{ weight: 5 }, { weight: 1 }, { weight: 4 }]);
-        events.push({ minute: b * 15 + rng.int(1, 15), team: side, type: (["parata", "palo", "fuori"] as const)[kind], player: shooter.name, schema: pickSchema(rng, me.t, me.r, shooter, false) });
+        events.push({ minute: b * 15 + rng.int(1, 15), team: side, type: (["parata", "palo", "fuori"] as const)[kind], player: shooter.name, role: shooter.ruolo, schema: pickSchema(rng, me.t, me.r, shooter, false) });
       }
     }
   }
   events.sort((a, b) => a.minute - b.minute);
+  // Assist con un generatore separato: non altera risultati e marcatori già tarati.
+  const arng = makeRng(seed + ":assist");
+  for (const e of events) {
+    if (e.type !== "gol" || e.schema === "rigore" || !arng.chance(ASSIST_RATE)) continue;
+    const t = teams[e.team].t;
+    const ap = pickAssist(arng, t.club.roster, e.player!, t.club.fuoriclasse?.name);
+    if (ap) { e.assist = ap.name; e.assistRole = ap.ruolo; }
+  }
   let h = 0, a = 0;
   for (const e of events) {
     if (e.type === "gol") { if (e.team === "home") h++; else a++; }

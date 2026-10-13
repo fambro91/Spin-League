@@ -103,7 +103,7 @@ export function Serata({ token, md, d, onClose }: { token: string; md: number; d
 }
 
 function scorers(m: any, side: "home" | "away") {
-  return m.data.events.filter((e: any) => e.type === "gol" && e.team === side).map((e: any) => `${e.player} ${e.minute}'`).join(", ");
+  return m.data.events.filter((e: any) => e.type === "gol" && e.team === side).map((e: any) => `${e.player} ${e.minute}'${e.schema === "rigore" ? " (rig.)" : ""}`).join(", ");
 }
 
 function MineStep({ m, clubsById, myId }: { m: any; clubsById: Map<string, any>; myId: string }) {
