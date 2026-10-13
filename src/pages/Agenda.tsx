@@ -24,7 +24,7 @@ export function AgendaCard({ d, onOpen, openTactics }: { d: any; onOpen: (s: She
     { k: "f", label: "Formazione", done: formazione, info: formazione ? "Pronta" : "Da fare", go: openTactics },
     { k: "d", label: "Decisioni del giorno", done: dil.length > 0 && dilDone === dil.length, info: `${dilDone}/${dil.length}`, go: () => onOpen("dilemmi") },
     { k: "s", label: "Conferenza stampa", done: press, info: press ? "Fatta" : "Facoltativa", go: () => onOpen("stampa") },
-    ...(others.length ? [{ k: "p", label: "Pronostici", done: preds === others.length, info: `${preds}/${others.length}`, go: () => onOpen("pronostici") }] : []),
+    ...(others.length && !d.solo ? [{ k: "p", label: "Pronostici", done: preds === others.length, info: `${preds}/${others.length}`, go: () => onOpen("pronostici") }] : []),
     ...(ag.oppHuman ? [{ k: "c", label: incoming ? "Sei stato sfidato!" : "Sfida l'avversario", done: !!ch && ch.status !== "proposta" || (!!ch && !incoming), info: ch ? (ch.status === "accettata" ? `${ch.stake} M€ in palio` : ch.status === "proposta" ? (incoming ? "Rispondi" : "In attesa") : ch.status) : "Facoltativa", go: () => onOpen("sfida") }] : []),
   ];
   const done = items.filter((i) => i.done).length;
@@ -34,7 +34,7 @@ export function AgendaCard({ d, onOpen, openTactics }: { d: any; onOpen: (s: She
         <h3 style={{ margin: 0 }}>Agenda di oggi</h3>
         <span className={`chip ${done === items.length ? "done" : "todo"}`}>{done}/{items.length}</span>
       </div>
-      <p className="small muted" style={{ margin: "2px 0 8px" }}>Tutto entro le 21:00.</p>
+      <p className="small muted" style={{ margin: "2px 0 8px" }}>{d.solo ? "Tutto prima di giocare la giornata." : "Tutto entro le 21:00."}</p>
       <div className="agenda">
         {items.map((i) => (
           <button key={i.k} className={`agenda-item ${i.done ? "done" : ""} ${i.k === "c" && incoming ? "alert" : ""}`} onClick={i.go}>
@@ -67,7 +67,7 @@ export function DilemmaSheet({ d, token, reload, onClose }: { d: any; token: str
     <div className="modal" role="dialog" aria-label="Decisioni del giorno">
       <div className="wrap">
         <AppBar title="Decisioni del giorno" onBack={onClose} />
-        <p className="small muted" style={{ textAlign: "center" }}>Budget {st.budget} M€ · condizione {st.cond} · morale {st.morale}. Se non scegli entro le 21:00, vale l'opzione prudente.</p>
+        <p className="small muted" style={{ textAlign: "center" }}>Budget {st.budget} M€ · condizione {st.cond} · morale {st.morale}. {d.solo ? "Se non scegli, vale l'opzione prudente." : "Se non scegli entro le 21:00, vale l'opzione prudente."}</p>
         {err && <div className="error">{err}</div>}
         {cards.map((pick: any) => {
           const def = DILEMMA_BY_ID.get(pick.id);
@@ -121,7 +121,7 @@ export function PressSheet({ d, token, reload, onClose }: { d: any; token: strin
             <h3>Hai già parlato</h3>
             <p>Tono: <strong>{PRESS_TONES.find((t) => t.id === done.tone)?.label}</strong></p>
             {done.text && <p className="event-text" style={{ maxWidth: "none" }}>«{done.text}»</p>}
-            <p className="small muted">L'effetto arriva alle 21:00, in base al risultato.</p>
+            <p className="small muted">{d.solo ? "L'effetto arriva dopo la partita, in base al risultato." : "L'effetto arriva alle 21:00, in base al risultato."}</p>
           </div>
         ) : (
           <>

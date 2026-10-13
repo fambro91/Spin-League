@@ -75,7 +75,7 @@ export function Serata({ token, md, d, onClose }: { token: string; md: number; d
         {!data && !err && <p>Carico la serata…</p>}
         {step?.kind === "intro" && (
           <div className="show-center">
-            <div className="kicker">{fmtDate(data.date)} · ore 21:00</div>
+            <div className="kicker">{d.solo ? `Stagione ${d.league.season}` : `${fmtDate(data.date)} · ore 21:00`}</div>
             <div className="show-title">Giornata {md}</div>
             <p className="muted">{data.matches.length} partite, {data.day?.events?.length ?? 0} ruote evento, la classifica nuova e la prima pagina.</p>
           </div>

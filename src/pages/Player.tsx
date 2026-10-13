@@ -1,6 +1,7 @@
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { api, fmtDate, store } from "../api";
+import { restartSolo } from "./Solo";
 import { Creation } from "./Creation";
 import { Identity } from "./Identity";
 import { Serata, seenKey } from "./Serata";
@@ -28,9 +29,11 @@ type Ctx = {
   d: any; token: string; reload: () => Promise<void>; clubsById: Map<string, any>;
   openClub: (id: string) => void; openMatch: (id: string) => void; openSerata: (md: number) => void;
   openTactics: () => void; openMarket: () => void; goTab: (t: Tab) => void; openSheet: (s: "dilemmi" | "stampa" | "pronostici" | "sfida") => void;
+  solo?: SoloOpts;
 };
+type SoloOpts = { adminToken: string; teams: number };
 
-export function Player({ token }: { token: string }) {
+export function Player({ token, solo }: { token: string; solo?: SoloOpts }) {
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("oggi");
@@ -39,11 +42,12 @@ export function Player({ token }: { token: string }) {
   const [serata, setSerata] = useState<number | null>(null);
   const [sheet, setSheet] = useState<"tactics" | "market" | "dilemmi" | "stampa" | "pronostici" | "sfida" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [askRestart, setAskRestart] = useState(false);
 
   const load = async () => {
-    try { setD(await api(`me/${token}`)); setErr(null); } catch (e: any) { setErr(e.message); }
+    try { const r = await api(`me/${token}`); if (solo) r.solo = true; setD(r); setErr(null); } catch (e: any) { setErr(e.message); }
   };
-  useEffect(() => { store.set("spin:lastPlayer", token); load(); }, [token]);
+  useEffect(() => { if (!solo) store.set("spin:lastPlayer", token); load(); }, [token]);
   useEffect(() => { window.scrollTo(0, 0); }, [tab]);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3500); return () => clearTimeout(t); }, [toast]);
 
@@ -57,18 +61,19 @@ export function Player({ token }: { token: string }) {
   const adminToken = store.get(`spin:admin:${d.league.id}`);
   const ctx: Ctx = {
     d, token, reload: load, clubsById, openClub: setClubModal, openMatch: setMatchModal, openSerata: setSerata,
-    openTactics: () => setSheet("tactics"), openMarket: () => setSheet("market"), goTab: setTab, openSheet: setSheet,
+    openTactics: () => setSheet("tactics"), openMarket: () => setSheet("market"), goTab: setTab, openSheet: setSheet, solo,
   };
 
   return (
     <>
       <div className="wrap">
         <div className="head-center">
-          {adminToken ? <a className="icon-btn plain" aria-label="Gestisci campionato" href={`#/admin/${adminToken}`} style={{ color: "var(--chalk)" }}><IcGear /></a> : <span />}
+          {solo ? <button className="icon-btn plain" aria-label="Ricomincia la carriera" onClick={() => setAskRestart(true)}><IcRotate /></button>
+            : adminToken ? <a className="icon-btn plain" aria-label="Gestisci campionato" href={`#/admin/${adminToken}`} style={{ color: "var(--chalk)" }}><IcGear /></a> : <span />}
           <div className="brand"><Logo size={34} wordmark={false} />Spin League</div>
           <button className="icon-btn plain" aria-label="Notizie" onClick={() => setTab("notizie")}><IcBell /></button>
         </div>
-        <div className="small muted" style={{ margin: "2px 0 4px" }}>{d.league.name} · stagione {d.league.season} · {d.player.name}</div>
+        <div className="small muted" style={{ margin: "2px 0 4px" }}>{solo ? <span className="solo-tag">CARRIERA · OFFLINE</span> : null} {d.league.name} · stagione {d.league.season}{solo ? "" : ` · ${d.player.name}`}</div>
         {err && <div className="error">{err}</div>}
         {toast && <div className="ok" role="status">{toast}</div>}
         {!mine && <div className="panel"><h2>Stagione in corso</h2><p>Questa stagione è partita senza il tuo club. Potrai crearne uno alla prossima.</p></div>}
@@ -90,6 +95,21 @@ export function Player({ token }: { token: string }) {
       {sheet === "stampa" && <PressSheet d={d} token={token} reload={load} onClose={() => setSheet(null)} />}
       {sheet === "pronostici" && <PredictionsSheet d={d} token={token} reload={load} onClose={() => setSheet(null)} />}
       {sheet === "sfida" && <ChallengeSheet d={d} token={token} reload={load} onClose={() => setSheet(null)} />}
+      {askRestart && (
+        <div className="modal" role="dialog" aria-label="Ricomincia la carriera">
+          <div className="wrap">
+            <AppBar title="Ricomincia" onBack={() => setAskRestart(false)} />
+            <div className="panel cta-card">
+              <h2>Ricominciare da zero?</h2>
+              <p>La carriera attuale ({d.league.name}, stagione {d.league.season}) viene cancellata da questo dispositivo. Poi crei un nuovo club con le ruote.</p>
+              <div className="stack">
+                <button className="btn block" onClick={() => restartSolo()}>Sì, ricomincia</button>
+                <button className="btn ghost block" onClick={() => setAskRestart(false)}>Annulla</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -97,11 +117,12 @@ export function Player({ token }: { token: string }) {
 /* ---------------- OGGI ---------------- */
 
 
-function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTactics, openMarket, openMatch, openSheet }: Ctx) {
+function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTactics, openMarket, openMatch, openSheet, solo }: Ctx) {
   const L = d.league, mine = d.mine;
   const myId = mine?.id;
   const seen = Number(store.get(seenKey(L.id, L.season)) ?? 0);
 
+  if (L.status === "setup" && solo) return <SoloStart d={d} solo={solo} reload={reload} />;
   if (L.status === "setup") {
     const humans = d.participants.filter((p: any) => !p.isCpu);
     const ready = humans.filter((p: any) => p.status === "ready").length;
@@ -130,8 +151,10 @@ function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTacti
     <>
       <div className="today-head">
         <div className="small muted">{L.status === "finished" ? "Stagione conclusa" : `Giornata ${L.nextMatchday} di ${L.totalMatchdays}`}</div>
-        <div className="big">{L.status === "finished" ? "Si alza la coppa" : today ? "Stasera si gioca" : `Si gioca il ${fmtDate(L.nextMatchDate)}`}</div>
+        <div className="big">{L.status === "finished" ? "Si alza la coppa" : solo ? "Tocca a te" : today ? "Stasera si gioca" : `Si gioca il ${fmtDate(L.nextMatchDate)}`}</div>
       </div>
+
+      {solo && <SoloPlay d={d} solo={solo} reload={reload} openSerata={openSerata} unseen={!!unseen} />}
 
       {unseen && (
         <div className="panel cta-card">
@@ -153,7 +176,7 @@ function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTacti
             <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: 8 }}><IcBall size={20} />La tua partita</h3>
             <span className={`chip ${confirmed ? "done" : "todo"}`}>{confirmed ? "Formazione pronta" : "Formazione da fare"}</span>
           </div>
-          <div className="match-meta">{L.nextMatchday}ª giornata · {fmtDate(L.nextMatchDate)} · 21:00 · {next.homeId === myId ? "in casa" : "in trasferta"}</div>
+          <div className="match-meta">{L.nextMatchday}ª giornata{solo ? "" : ` · ${fmtDate(L.nextMatchDate)} · 21:00`} · {next.homeId === myId ? "in casa" : "in trasferta"}</div>
           <Versus m={next} clubsById={clubsById} onOpen={openClub} />
           <div className="stack" style={{ margin: "4px 0 14px" }}>
             <div><div className="row spread small"><span>Condizione</span><span>{st.cond}</span></div><Bar value={st.cond} color={st.cond < 60 ? "#e0343f" : "#7ee08a"} /></div>
@@ -162,7 +185,7 @@ function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTacti
           {st.modifiers?.length > 0 && <p className="warn"><IcWarn size={16} /> {st.modifiers.map((m: any) => `${m.label} (${REPARTO_LABEL[m.rep as Reparto]} ${m.delta})`).join(" · ")}</p>}
           {st.campoSqualificato && <p className="warn"><IcWarn size={16} /> Campo squalificato: niente fattore campo nella prossima in casa</p>}
           <button className={`btn block ${confirmed ? "ghost" : unseen ? "" : "pulse"}`} onClick={openTactics}>{confirmed ? "Modifica la formazione" : "Prepara la formazione"}</button>
-          {!confirmed && <p className="small muted" style={{ marginTop: 8 }}>Hai tempo fino alle 21:00. Se non scegli, giochi con le scelte dell'ultima volta.</p>}
+          {!confirmed && <p className="small muted" style={{ marginTop: 8 }}>{solo ? "Se non scegli, giochi con le scelte dell'ultima volta." : "Hai tempo fino alle 21:00. Se non scegli, giochi con le scelte dell'ultima volta."}</p>}
         </div>
       )}
 
@@ -194,6 +217,65 @@ function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTacti
   );
 }
 
+function SoloStart({ d, solo, reload }: { d: any; solo: SoloOpts; reload: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const go = async () => {
+    setBusy(true); setErr(null);
+    try { await api(`admin/${solo.adminToken}/start`, { body: { teams: solo.teams, firstDay: "oggi" } }); await reload(); }
+    catch (e: any) { setErr(e.message); }
+    setBusy(false);
+  };
+  return (
+    <>
+      <div className="today-head"><div className="big">Il club è pronto</div></div>
+      <div className="panel cta-card">
+        <p>{d.mine?.club?.name} affronterà {solo.teams - 1} squadre bot, andata e ritorno: {(solo.teams - 1) * 2} giornate.</p>
+        {err && <div className="error">{err}</div>}
+        <button className="btn block pulse" disabled={busy} onClick={go}>{busy ? "Genero il calendario…" : "Avvia il campionato"}</button>
+      </div>
+      <p className="small muted">Intanto puoi guardare la tua scheda in "Squadra".</p>
+    </>
+  );
+}
+
+function SoloPlay({ d, solo, reload, openSerata, unseen }: { d: any; solo: SoloOpts; reload: () => Promise<void>; openSerata: (md: number) => void; unseen: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const L = d.league;
+  const play = async () => {
+    setBusy(true); setErr(null);
+    try { const r = await api<{ matchday: number }>(`admin/${solo.adminToken}/play-now`, { method: "POST" }); await reload(); openSerata(r.matchday); }
+    catch (e: any) { setErr(e.message); }
+    setBusy(false);
+  };
+  const newSeason = async () => {
+    setBusy(true); setErr(null);
+    try { await api(`admin/${solo.adminToken}/new-season`, { method: "POST" }); await reload(); }
+    catch (e: any) { setErr(e.message); }
+    setBusy(false);
+  };
+  if (L.status === "finished") return (
+    <div className="panel cta-card">
+      <h3>Stagione finita</h3>
+      <p className="small muted">Una nuova stagione riparte da zero: nuovo club con le ruote, nuovo campionato. L'albo d'oro resta.</p>
+      {err && <div className="error">{err}</div>}
+      <button className="btn block pulse" disabled={busy} onClick={newSeason}>Nuova stagione</button>
+    </div>
+  );
+  if (L.status !== "running") return null;
+  return (
+    <div className={`panel solo-play ${unseen ? "" : "cta-card"}`}>
+      <div className="row spread">
+        <div><div className="small muted">Giornata {L.nextMatchday} di {L.totalMatchdays}</div><div className="solo-prog"><i style={{ width: `${(L.matchdayPlayed / L.totalMatchdays) * 100}%` }} /></div></div>
+      </div>
+      <p className="small muted" style={{ margin: "8px 0 12px" }}>Prepara formazione e agenda qui sotto, poi fischio d'inizio. Nessuna attesa: la giornata si gioca subito.</p>
+      {err && <div className="error">{err}</div>}
+      <button className={`btn block ${unseen ? "" : "pulse"}`} disabled={busy} onClick={play}>{busy ? "Si gioca…" : `Gioca la giornata ${L.nextMatchday}`}</button>
+    </div>
+  );
+}
+
 function Versus({ m, clubsById, onOpen }: { m: any; clubsById: Map<string, any>; onOpen: (id: string) => void }) {
   const h = clubsById.get(m.homeId), a = clubsById.get(m.awayId);
   const side = (c: any, id: string) => (
@@ -217,7 +299,7 @@ function DecisionCard({ d, token, reload }: { d: any; token: string; reload: () 
     <div className="panel cta-card">
       <div className="serata-card">
         <div className="serata-ico" aria-hidden>✈️</div>
-        <div><h3 style={{ margin: 0 }}>Il tuo fuoriclasse vuole andare via</h3><p className="small muted" style={{ margin: "2px 0 0" }}>{d.mine.club.fuoriclasse?.name} · vendi per 60 M€ (perdi il bonus) o tienilo (morale −10). Se non decidi entro le 21:00, resta.</p></div>
+        <div><h3 style={{ margin: 0 }}>Il tuo fuoriclasse vuole andare via</h3><p className="small muted" style={{ margin: "2px 0 0" }}>{d.mine.club.fuoriclasse?.name} · vendi per 60 M€ (perdi il bonus) o tienilo (morale −10). {d.solo ? "Se non decidi prima della giornata, resta." : "Se non decidi entro le 21:00, resta."}</p></div>
       </div>
       {err && <div className="error">{err}</div>}
       <div className="row" style={{ marginTop: 12 }}>

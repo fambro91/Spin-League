@@ -4,6 +4,8 @@ import "./styles.css";
 import { Home } from "./pages/Home";
 import { Admin } from "./pages/Admin";
 import { Player } from "./pages/Player";
+import { Solo } from "./pages/Solo";
+import { setSolo } from "./api";
 
 function useHash() {
   const [hash, setHash] = useState(location.hash);
@@ -18,9 +20,16 @@ function useHash() {
 function App() {
   const hash = useHash();
   const parts = hash.replace(/^#\/?/, "").split("/");
+  setSolo(parts[0] === "solo");
+  if (parts[0] === "solo") return <Solo />;
   if (parts[0] === "admin" && parts[1]) return <Admin token={parts[1]} />;
   if (parts[0] === "p" && parts[1]) return <Player token={parts[1]} />;
   return <Home />;
+}
+
+// app installabile e giocabile offline (carriera contro i bot)
+if ("serviceWorker" in navigator && location.hostname !== "localhost") {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("/sw.js").catch(() => {}); });
 }
 
 createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>);

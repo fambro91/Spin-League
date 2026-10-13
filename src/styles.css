@@ -450,3 +450,9 @@ textarea { width: 100%; background: rgba(0, 0, 0, 0.28); border: 1px solid var(-
 @keyframes unlock-spin { from { transform: rotate(-200deg) scale(0.2); opacity: 0; } to { transform: none; opacity: 1; } }
 .trait-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 10px; }
 .trait-chip { font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: rgba(168, 85, 247, 0.25); border: 1px solid rgba(196, 140, 255, 0.5); }
+/* ---------- carriera offline ---------- */
+.solo-tag { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; padding: 2px 8px; border-radius: 999px; background: rgba(143, 211, 255, 0.18); color: var(--sky); border: 1px solid rgba(143, 211, 255, 0.4); margin-right: 4px; }
+.solo-prog { width: 200px; max-width: 60vw; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.12); margin-top: 6px; overflow: hidden; }
+.solo-prog i { display: block; height: 100%; background: var(--amber); border-radius: 3px; }
+.solo-card { display: grid; grid-template-columns: 52px 1fr; gap: 12px; align-items: center; }
+.solo-card .ic { font-size: 38px; text-align: center; }

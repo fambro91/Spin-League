@@ -1,3 +1,4 @@
+import { loadSolo } from "./Solo";
 import { useState } from "react";
 import { api, adminLink, playerLink, store } from "../api";
 import { WheelCanvas } from "../components/WheelCanvas";
@@ -29,6 +30,7 @@ export function Home() {
     } finally { setBusy(false); }
   };
 
+  const hasSolo = !!loadSolo();
   return (
     <div className="wrap">
       <div style={{ textAlign: "center", paddingTop: 18 }}>
@@ -45,6 +47,14 @@ export function Home() {
           {last && <a className="btn ghost small" href={adminLink(last).replace(location.origin, "")}>Pagina organizzatore</a>}
         </div>
       )}
+
+      <a className="panel solo-card cta-card" href="#/solo" style={{ textDecoration: "none", color: "inherit", display: "grid" }}>
+        <span className="ic" aria-hidden>🤖</span>
+        <span>
+          <strong style={{ fontFamily: "var(--display)", fontSize: 24 }}>{hasSolo ? "Continua la carriera" : "Gioca da solo"}</strong>
+          <span className="small muted" style={{ display: "block" }}>{hasSolo ? "Riprendi da dove eri rimasto, anche offline." : "Un campionato contro i bot, giornate quando vuoi, anche offline."}</span>
+        </span>
+      </a>
 
       <form className="panel" onSubmit={create}>
         <h2>Crea un campionato</h2>

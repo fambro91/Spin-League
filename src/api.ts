@@ -1,4 +1,10 @@
+let solo = false;
+/** In modalità carriera le chiamate vanno al gioco locale, non al server. */
+export function setSolo(v: boolean) { solo = v; }
+export const isSolo = () => solo;
+
 export async function api<T = any>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
+  if (solo) { const { soloApi } = await import("./solo/runtime"); return soloApi<T>(path, opts); }
   const res = await fetch(`/api/${path}`, {
     method: opts.method ?? (opts.body ? "POST" : "GET"),
     headers: opts.body ? { "content-type": "application/json" } : undefined,
