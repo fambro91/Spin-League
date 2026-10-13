@@ -12,6 +12,7 @@ export type DaySummary = {
   events: string[];
   table: { pos: number; name: string; pt: number; owner: string }[];
   final: boolean;
+  quotes?: string[];
 };
 
 const JOURNALS = ["La Gazzetta del Pallone", "Il Corriere della Ruota", "Tuttospin", "Lo Spicchio Sportivo", "Il Giornale del Lunedì"];
@@ -56,6 +57,7 @@ export async function aiChronicle(env: Env, d: DaySummary): Promise<{ title: str
       tattiche: { [m.home]: m.tactics[0], [m.away]: m.tactics[1] },
     })),
     notizie_dalle_societa: d.events,
+    conferenze_stampa_e_sfide: d.quotes ?? [],
     classifica: d.table.map((r) => `${r.pos}. ${r.name} ${r.pt} pt (presidente ${r.owner})`),
   };
   const system = `Sei il caporedattore di "${d.journal}", un quotidiano sportivo italiano ironico che racconta un campionato di calcio inventato tra amici.
@@ -63,6 +65,7 @@ Scrivi la prima pagina della giornata in italiano.
 Regole:
 - Usa SOLO i fatti forniti: risultati, marcatori, minuti, espulsioni, classifica e notizie. Non inventare gol, punteggi o giocatori.
 - Puoi inventare citazioni di allenatori o tifosi purché non cambino i fatti.
+- Se ci sono conferenze stampa provocatorie o sfide tra presidenti, commenta come sono andate a finire.
 - Prima riga: un titolo da prima pagina, senza virgolette e senza la parola "Titolo".
 - Poi 4-6 notizie brevi, una per paragrafo, con tono giornalistico e ironico.
 - Chiudi con un paragrafo "Voci di corridoio:" con un pettegolezzo vago e innocuo.

@@ -4,6 +4,7 @@ import { api, fmtDate, store } from "../api";
 import { Creation } from "./Creation";
 import { Identity } from "./Identity";
 import { Serata, seenKey } from "./Serata";
+import { AgendaCard, ChallengeSheet, DilemmaSheet, ManagementPanel, PredictionsSheet, PressSheet } from "./Agenda";
 import { Bar, Crest, Form, Radar, ScoreHead } from "../components/ClubBits";
 import { Replay } from "../components/Replay";
 import { Logo } from "../components/Logo";
@@ -24,7 +25,7 @@ const TABS: { id: Tab; label: string; ico: React.ReactNode }[] = [
 type Ctx = {
   d: any; token: string; reload: () => Promise<void>; clubsById: Map<string, any>;
   openClub: (id: string) => void; openMatch: (id: string) => void; openSerata: (md: number) => void;
-  openTactics: () => void; openMarket: () => void; goTab: (t: Tab) => void;
+  openTactics: () => void; openMarket: () => void; goTab: (t: Tab) => void; openSheet: (s: "dilemmi" | "stampa" | "pronostici" | "sfida") => void;
 };
 
 export function Player({ token }: { token: string }) {
@@ -34,7 +35,7 @@ export function Player({ token }: { token: string }) {
   const [clubModal, setClubModal] = useState<string | null>(null);
   const [matchModal, setMatchModal] = useState<string | null>(null);
   const [serata, setSerata] = useState<number | null>(null);
-  const [sheet, setSheet] = useState<"tactics" | "market" | null>(null);
+  const [sheet, setSheet] = useState<"tactics" | "market" | "dilemmi" | "stampa" | "pronostici" | "sfida" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const load = async () => {
@@ -54,7 +55,7 @@ export function Player({ token }: { token: string }) {
   const adminToken = store.get(`spin:admin:${d.league.id}`);
   const ctx: Ctx = {
     d, token, reload: load, clubsById, openClub: setClubModal, openMatch: setMatchModal, openSerata: setSerata,
-    openTactics: () => setSheet("tactics"), openMarket: () => setSheet("market"), goTab: setTab,
+    openTactics: () => setSheet("tactics"), openMarket: () => setSheet("market"), goTab: setTab, openSheet: setSheet,
   };
 
   return (
@@ -83,6 +84,10 @@ export function Player({ token }: { token: string }) {
       {serata && <Serata token={token} md={serata} d={d} onClose={() => { setSerata(null); load(); }} />}
       {sheet === "tactics" && <TacticsSheet d={d} token={token} onClose={(ok) => { setSheet(null); if (ok) { setToast("Formazione confermata per stasera."); load(); } }} />}
       {sheet === "market" && <MarketSheet d={d} token={token} reload={load} onClose={() => setSheet(null)} />}
+      {sheet === "dilemmi" && <DilemmaSheet d={d} token={token} reload={load} onClose={() => setSheet(null)} />}
+      {sheet === "stampa" && <PressSheet d={d} token={token} reload={load} onClose={() => setSheet(null)} />}
+      {sheet === "pronostici" && <PredictionsSheet d={d} token={token} reload={load} onClose={() => setSheet(null)} />}
+      {sheet === "sfida" && <ChallengeSheet d={d} token={token} reload={load} onClose={() => setSheet(null)} />}
     </>
   );
 }
@@ -90,7 +95,7 @@ export function Player({ token }: { token: string }) {
 /* ---------------- OGGI ---------------- */
 
 
-function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTactics, openMarket, openMatch }: Ctx) {
+function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTactics, openMarket, openMatch, openSheet }: Ctx) {
   const L = d.league, mine = d.mine;
   const myId = mine?.id;
   const seen = Number(store.get(seenKey(L.id, L.season)) ?? 0);
@@ -137,6 +142,8 @@ function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTacti
       )}
 
       {L.status === "finished" && <SeasonEnd d={d} />}
+
+      {L.status === "running" && <AgendaCard d={d} onOpen={openSheet} openTactics={openTactics} />}
 
       {next && mine && (
         <div className={`panel ${!confirmed && !unseen ? "cta-card" : ""}`}>
@@ -417,7 +424,7 @@ function ClubCard({ c, state }: { c: any; state?: any }) {
   );
 }
 
-function ClubTab({ d }: Ctx) {
+function ClubTab({ d, token, reload }: Ctx) {
   const [tab, setTab] = useState<"rosa" | "stat">("rosa");
   const mine = d.mine;
   if (!mine?.club) return null;
@@ -435,6 +442,7 @@ function ClubTab({ d }: Ctx) {
     <>
       <AppBar title="Il tuo club" />
       <ClubCard c={{ ...mine.club, owner: d.player.name }} state={mine.state} />
+      {d.league.status !== "setup" && <ManagementPanel d={d} token={token} reload={reload} />}
       <div className="panel">
         <div className="tabs" role="tablist">
           <button role="tab" aria-selected={tab === "rosa"} onClick={() => setTab("rosa")}>Rosa ({roster.length})</button>
@@ -511,6 +519,14 @@ function TableTab({ d, openClub }: Ctx) {
           </>
         )}
       </div>
+      {d.clubs.some((c: any) => (c.predPoints ?? 0) > 0) && (
+        <div className="panel">
+          <h2>Classifica pronostici</h2>
+          {[...d.clubs].filter((c: any) => !c.isCpu).sort((a: any, b: any) => (b.predPoints ?? 0) - (a.predPoints ?? 0)).map((c: any, i: number) => (
+            <div key={c.id} className="roster-row"><span className="muted">{i + 1}.</span><span>{c.owner} <span className="small muted">· {c.name}</span></span><strong>{c.predPoints ?? 0}</strong></div>
+          ))}
+        </div>
+      )}
       {d.league.history.length > 0 && (
         <div className="panel">
           <h2>Albo d'oro</h2>

@@ -129,7 +129,21 @@ export type ClubState = {
   marketOps: number;
   marketDelta: Partial<Record<Reparto, number>>;
   lastResults: ("V" | "N" | "P")[];
+  // gestione (opzionali per compatibilità con i club già creati)
+  training?: Training;
+  tecnicaRep?: Reparto;
+  tecnicaCount?: number;
+  investments?: string[];
+  homeBoost?: number;
+  dilemmas?: { md: number; cards: DilemmaPick[] };
+  press?: { md: number; tone: "umile" | "provocatoria" | "silenzio"; text: string };
+  predictions?: { md: number; picks: Record<string, "1" | "X" | "2">; exact?: { matchId: string; h: number; a: number } };
+  predPoints?: number;
+  predLog?: { md: number; points: number }[];
 };
+
+export type Training = "fisico" | "tattica" | "tecnica" | "gruppo";
+export type DilemmaPick = { id: string; choice: number | null; result?: string };
 
 export type MatchEvent = {
   minute: number;

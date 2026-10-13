@@ -137,9 +137,11 @@ export function dailyEvent(rng: Rng, clubs: ClubBundle[], matchday: number): Day
     const R = REPARTO_LABEL[rep];
     switch (ev.id) {
       case "tranquilla": return { clubId: null, eventId: ev.id, eventIndex: evIdx, text: "Settimana tranquilla: nessuna notizia." };
-      case "infortunio":
-        s.modifiers.push({ rep, delta: -5, untilMatchday: matchday + 3, label: "Infortunio" });
-        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: infortunio, ${R} −5 per 3 giornate.` };
+      case "infortunio": {
+        const dur = s.investments?.includes("medico") ? 2 : 3;
+        s.modifiers.push({ rep, delta: -5, untilMatchday: matchday + dur, label: "Infortunio" });
+        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: infortunio, ${R} −5 per ${dur} giornate.` };
+      }
       case "polemica":
         s.morale = clamp(s.morale - 10, 0, 100);
         return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: polemica arbitrale, morale −10.` };
@@ -232,6 +234,8 @@ export function seasonAwards(rows: Row[], clubs: ClubBundle[], scorers: Map<stri
     const b = byId.get((best as { id: string }).id)!;
     awards.push({ title: "Allenatore dell'anno", clubId: b.id, text: `${b.club.name}: ${(best as { diff: number }).diff >= 0 ? "+" : ""}${(best as { diff: number }).diff} posizioni rispetto al pronostico` });
   }
+  const oracle = [...clubs].filter((c) => !c.isCpu && (c.state.predPoints ?? 0) > 0).sort((a, b) => (b.state.predPoints ?? 0) - (a.state.predPoints ?? 0))[0];
+  if (oracle) awards.push({ title: "Oracolo", clubId: oracle.id, text: `${oracle.club.name}: ${oracle.state.predPoints} punti nei pronostici` });
   if (champ) {
     const c = byId.get(champ.id);
     if (c && ["C", "D", "E"].includes(c.club.classe)) awards.push({ title: "Miracolo sportivo", clubId: c.id, text: `${c.club.name} campione con una squadra di classe ${c.club.classe}` });

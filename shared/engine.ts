@@ -20,6 +20,7 @@ export function effectiveRatings(t: TeamCtx, matchday: number): Ratings {
   if (DEFENSIVE.includes(c.modulo)) { r.dif += 2; r.att -= 2; }
   if (t.club.preferredModule === "tutti" || t.club.preferredModule === c.modulo) { r.att += 2; r.cen += 2; r.dif += 2; }
   if (t.club.coachStyle === "giochista") r.cen += 2;
+  if (t.state.training === "tattica") { r.att += 1; r.cen += 1; r.dif += 1; }
   if (c.turnover === "parziale") { r.att -= 2; r.cen -= 2; r.dif -= 2; }
   if (c.turnover === "massiccio") { r.att = (r.att + r.pan) / 2; r.cen = (r.cen + r.pan) / 2; r.dif = (r.dif + r.pan) / 2; }
   for (const k of Object.keys(r) as (keyof Ratings)[]) r[k] = clamp(r[k], 30, 99);
@@ -37,7 +38,7 @@ export function strengths(t: TeamCtx, matchday: number) {
   const r = effectiveRatings(t, matchday);
   const off = 0.6 * r.att + 0.4 * r.cen;
   const dif = 0.6 * r.dif + 0.25 * r.por + 0.15 * r.cen;
-  const campo = t.home && !t.state.campoSqualificato ? t.club.fans.campo : 0;
+  const campo = t.home && !t.state.campoSqualificato ? t.club.fans.campo + (t.state.homeBoost ?? 0) + (t.state.investments?.includes("curva") ? 1 : 0) : 0;
   const M = campo + (matchMorale(t) - 50) / 10 + (r.all - 70) / 10;
   const k = 0.85 + 0.15 * (t.state.cond / 100);
   return { off: (off + M) * k, dif: (dif + M) * k, r };

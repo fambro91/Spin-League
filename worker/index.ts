@@ -6,7 +6,9 @@ import {
 import { randomToken } from "../shared/rng";
 import { computeClub, initialState, clamp } from "../shared/club";
 import { marketOp, sellFuoriclasse, standings } from "../shared/league";
-import { ATTEGGIAMENTI, MODULI, REPARTI, type ClubState, type CreationState, type Identity, type Reparto } from "../shared/types";
+import { applyDilemma, buyInvestment, dealDilemmas, TRAININGS } from "../shared/manager";
+import { cryptoRng } from "../shared/rng";
+import { ATTEGGIAMENTI, MODULI, REPARTI, type ClubState, type CreationState, type Identity, type Reparto, type Training } from "../shared/types";
 import { esc, tgCall, tgSecret, tgSend } from "./telegram";
 
 class HttpError extends Error { constructor(public status: number, msg: string) { super(msg); } }
@@ -197,6 +199,22 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
         };
       }
       const { results: offers } = c ? await env.DB.prepare("SELECT * FROM offers WHERE league_id = ? AND season = ? AND (from_club = ? OR to_club = ?) ORDER BY created_at DESC").bind(l.id, l.season, c.id, c.id).all() : { results: [] };
+      // Agenda del giorno
+      let agenda: any = null;
+      if (c && c.status === "ready" && l.status === "running") {
+        const md = l.matchday_played + 1;
+        const cl = JSON.parse(c.club!), st: ClubState = JSON.parse(c.state!);
+        if (st.dilemmas?.md !== md) {
+          st.dilemmas = { md, cards: dealDilemmas(`${l.seed}:${c.id}`, cl, st, md) };
+          await env.DB.prepare("UPDATE clubs SET state = ? WHERE id = ?").bind(JSON.stringify(st), c.id).run();
+          if (mine) mine.state = st;
+        }
+        const myMatch = (view.matches as any[]).find((x) => x.matchday === md && (x.homeId === c!.id || x.awayId === c!.id));
+        const oppId = myMatch ? (myMatch.homeId === c.id ? myMatch.awayId : myMatch.homeId) : null;
+        const oppHuman = oppId ? !(view.participants as any[]).find((x) => x.id === oppId)?.isCpu : false;
+        const { results: chs } = await env.DB.prepare("SELECT * FROM challenges WHERE league_id = ? AND season = ? AND matchday = ? AND (from_club = ? OR to_club = ?)").bind(l.id, l.season, md, c.id, c.id).all();
+        agenda = { md, oppId, oppHuman, challenge: chs[0] ?? null };
+      }
       let myScorers: { name: string; goals: number }[] = [];
       if (c && c.status === "ready" && l.matchday_played > 0) {
         const { results: mm } = await env.DB.prepare("SELECT home_id, away_id, data FROM matches WHERE league_id = ? AND season = ? AND played = 1 AND (home_id = ? OR away_id = ?)").bind(l.id, l.season, c.id, c.id).all<{ home_id: string; away_id: string; data: string }>();
@@ -207,7 +225,7 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
         }
         myScorers = [...tally.entries()].map(([name, goals]) => ({ name, goals })).sort((a, b) => b.goals - a.goals);
       }
-      return json({ ...view, player: { id: p.id, name: p.name }, mine, offers, myScorers, now: romeNow() });
+      return json({ ...view, player: { id: p.id, name: p.name }, mine, offers, myScorers, agenda, now: romeNow() });
     }
     if (!c) throw new HttpError(400, "La stagione è già iniziata senza il tuo club: aspetta la prossima.");
 
@@ -233,7 +251,7 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
     if (c.status !== "ready") throw new HttpError(400, "Prima completa il tuo club.");
     const club = JSON.parse(c.club!);
     const state: ClubState = JSON.parse(c.state!);
-    const save = () => env.DB.prepare("UPDATE clubs SET club = ?, state = ? WHERE id = ?").bind(JSON.stringify(club), JSON.stringify(state), c!.id).run();
+    const save = () => { state.budget = Math.round(state.budget * 10) / 10; return env.DB.prepare("UPDATE clubs SET club = ?, state = ? WHERE id = ?").bind(JSON.stringify(club), JSON.stringify(state), c!.id).run(); };
 
     if (action === "choices" && m === "POST") {
       if (l.status !== "running") throw new HttpError(400, "Il campionato non è in corso.");
@@ -254,6 +272,112 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
       const err = marketOp(state, b.op, b.rep);
       if (err) throw new HttpError(400, err);
       await save();
+      return json({ ok: true });
+    }
+    const nextMd = l.matchday_played + 1;
+    const running = () => { if (l.status !== "running") throw new HttpError(400, "Il campionato non è in corso."); };
+
+    if (action === "dilemma" && m === "POST") {
+      running();
+      const b = await body<{ id?: string; option?: number }>(req);
+      const pick = state.dilemmas?.md === nextMd ? state.dilemmas.cards.find((x) => x.id === b.id) : null;
+      if (!pick) throw new HttpError(400, "Decisione non disponibile.");
+      if (pick.choice !== null) throw new HttpError(400, "Hai già deciso.");
+      let result: string;
+      try { result = applyDilemma(club, state, pick, Number(b.option), nextMd, cryptoRng()); } catch (e: any) { throw new HttpError(400, e.message); }
+      await save();
+      return json({ ok: true, result });
+    }
+    if (action === "training" && m === "POST") {
+      const b = await body<{ focus?: Training; rep?: Reparto }>(req);
+      if (!TRAININGS.some((t) => t.id === b.focus)) throw new HttpError(400, "Allenamento non valido.");
+      if (b.focus !== state.training) state.tecnicaCount = 0;
+      state.training = b.focus;
+      if (b.rep && (["por", "dif", "cen", "att", "pan", "all"] as Reparto[]).includes(b.rep)) state.tecnicaRep = b.rep;
+      await save();
+      return json({ ok: true });
+    }
+    if (action === "invest" && m === "POST") {
+      const b = await body<{ id?: string }>(req);
+      let msg: string;
+      try { msg = buyInvestment(club, state, String(b.id)); } catch (e: any) { throw new HttpError(400, e.message); }
+      await save();
+      await addNews(env, l, null, "club", "Investimento", `${club.name}: ${msg}`);
+      return json({ ok: true, msg });
+    }
+    if (action === "press" && m === "POST") {
+      running();
+      const b = await body<{ tone?: string; text?: string }>(req);
+      if (!["umile", "provocatoria", "silenzio"].includes(String(b.tone))) throw new HttpError(400, "Tono non valido.");
+      if (state.press?.md === nextMd) throw new HttpError(400, "Hai già parlato in conferenza stampa per questa giornata.");
+      const text = cleanName(b.text, 120);
+      if (b.tone === "provocatoria" && text.length < 3) throw new HttpError(400, "Scrivi la tua frase.");
+      state.press = { md: nextMd, tone: b.tone as any, text };
+      await save();
+      if (b.tone !== "silenzio") {
+        const verb = b.tone === "provocatoria" ? "🎤🔥" : "🎤";
+        await tgSend(env, l.tg_chat, `${verb} <b>Conferenza stampa</b> · ${esc(p.name)} (${esc(club.name)}):\n«${esc(text || "Rispetto per tutti, pensiamo a lavorare.")}»`);
+        await addNews(env, l, null, "stampa", `Conferenza stampa: ${club.name}`, `${p.name}: «${text || "Rispetto per tutti, pensiamo a lavorare."}»`);
+      }
+      return json({ ok: true });
+    }
+    if (action === "predictions" && m === "POST") {
+      running();
+      const b = await body<{ picks?: Record<string, string>; exact?: { matchId: string; h: number; a: number } }>(req);
+      const { results: ms } = await env.DB.prepare("SELECT id, home_id, away_id FROM matches WHERE league_id = ? AND season = ? AND matchday = ?").bind(l.id, l.season, nextMd).all<{ id: string; home_id: string; away_id: string }>();
+      const valid = new Set(ms.filter((x) => x.home_id !== c!.id && x.away_id !== c!.id).map((x) => x.id));
+      const picks: Record<string, "1" | "X" | "2"> = {};
+      for (const [k, v] of Object.entries(b.picks ?? {})) if (valid.has(k) && ["1", "X", "2"].includes(v)) picks[k] = v as any;
+      let exact = undefined as any;
+      if (b.exact && valid.has(b.exact.matchId)) {
+        const h = Math.max(0, Math.min(9, Math.round(Number(b.exact.h)))), a = Math.max(0, Math.min(9, Math.round(Number(b.exact.a))));
+        exact = { matchId: b.exact.matchId, h, a };
+      }
+      state.predictions = { md: nextMd, picks, exact };
+      await save();
+      return json({ ok: true });
+    }
+    if (action === "challenge" && m === "POST" && !parts[3]) {
+      running();
+      const b = await body<{ stake?: number }>(req);
+      const stake = Math.round(Number(b.stake));
+      if (!(stake >= 5 && stake <= 50)) throw new HttpError(400, "La posta va da 5 a 50 M€.");
+      if (state.budget < stake) throw new HttpError(400, `Hai solo ${state.budget} M€.`);
+      const mt = await env.DB.prepare("SELECT * FROM matches WHERE league_id = ? AND season = ? AND matchday = ? AND (home_id = ? OR away_id = ?)").bind(l.id, l.season, nextMd, c.id, c.id).first<MatchRow>();
+      if (!mt) throw new HttpError(400, "Nessuna partita in programma.");
+      const oppId = mt.home_id === c.id ? mt.away_id : mt.home_id;
+      const opp = await env.DB.prepare("SELECT c.*, p.name AS owner FROM clubs c LEFT JOIN players p ON p.id = c.player_id WHERE c.id = ?").bind(oppId).first<any>();
+      if (!opp || opp.is_cpu) throw new HttpError(400, "Si può sfidare solo un amico.");
+      const ex = await env.DB.prepare("SELECT id FROM challenges WHERE league_id = ? AND season = ? AND matchday = ? AND (from_club IN (?, ?) AND to_club IN (?, ?)) AND status IN ('proposta','accettata')").bind(l.id, l.season, nextMd, c.id, oppId, c.id, oppId).first();
+      if (ex) throw new HttpError(400, "C'è già una sfida per questa partita.");
+      await env.DB.prepare("INSERT INTO challenges (id, league_id, season, matchday, from_club, to_club, stake, status, created_at) VALUES (?,?,?,?,?,?,?,?,?)").bind(id(), l.id, l.season, nextMd, c.id, oppId, stake, "proposta", nowIso()).run();
+      const oppName = JSON.parse(opp.club).name;
+      await tgSend(env, l.tg_chat, `⚔️ <b>Sfida!</b> ${esc(p.name)} (${esc(club.name)}) sfida ${esc(opp.owner)} (${esc(oppName)}) con una posta di <b>${stake} M€</b>. Accetterà?`);
+      return json({ ok: true });
+    }
+    if (action === "challenge" && parts[3] && m === "POST") {
+      running();
+      const b = await body<{ accept?: boolean }>(req);
+      const ch = await env.DB.prepare("SELECT * FROM challenges WHERE id = ? AND league_id = ? AND status = 'proposta'").bind(parts[3], l.id).first<any>();
+      if (!ch) throw new HttpError(404, "Sfida non trovata.");
+      if (ch.from_club === c.id && !b.accept) { await env.DB.prepare("UPDATE challenges SET status = 'ritirata' WHERE id = ?").bind(ch.id).run(); return json({ ok: true }); }
+      if (ch.to_club !== c.id) throw new HttpError(403, "Non è una sfida per te.");
+      if (!b.accept) {
+        await env.DB.prepare("UPDATE challenges SET status = 'rifiutata' WHERE id = ?").bind(ch.id).run();
+        await tgSend(env, l.tg_chat, `🐔 ${esc(p.name)} rifiuta la sfida da ${ch.stake} M€.`);
+        return json({ ok: true });
+      }
+      const from = await env.DB.prepare("SELECT * FROM clubs WHERE id = ?").bind(ch.from_club).first<ClubRow>();
+      const fs: ClubState = JSON.parse(from!.state!);
+      if (state.budget < ch.stake) throw new HttpError(400, `Ti servono ${ch.stake} M€.`);
+      if (fs.budget < ch.stake) throw new HttpError(400, "Lo sfidante non ha più abbastanza budget.");
+      state.budget = Math.round((state.budget - ch.stake) * 10) / 10; fs.budget = Math.round((fs.budget - ch.stake) * 10) / 10;
+      await env.DB.batch([
+        env.DB.prepare("UPDATE clubs SET state = ? WHERE id = ?").bind(JSON.stringify(state), c.id),
+        env.DB.prepare("UPDATE clubs SET state = ? WHERE id = ?").bind(JSON.stringify(fs), from!.id),
+        env.DB.prepare("UPDATE challenges SET status = 'accettata' WHERE id = ?").bind(ch.id),
+      ]);
+      await tgSend(env, l.tg_chat, `🤝 ${esc(p.name)} accetta la sfida: <b>${ch.stake} M€</b> a testa sul piatto. Si decide alle 21:00!`);
       return json({ ok: true });
     }
     if (action === "decision" && m === "POST") {

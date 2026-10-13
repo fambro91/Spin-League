@@ -8,6 +8,7 @@ import { computeClub, cpuIdentity, initialState } from "../shared/club";
 import { simulateMatch } from "../shared/engine";
 import { afterMatch, bergerSchedule, choicesFor, dailyEvent, marketOp, seasonAwards, standings, type ClubBundle } from "../shared/league";
 import { aiChronicle, journalFor, type DaySummary } from "./chronicle";
+import { applyDilemma, cpuManage, dayAfter, DILEMMA_BY_ID, predictionPoints } from "../shared/manager";
 import { esc, tgSend } from "./telegram";
 
 export const id = () => randomToken(9);
@@ -138,12 +139,23 @@ async function playClaimed(env: Env, l: LeagueRow, md: number): Promise<{ matchd
   const today = allMatches.filter((m) => m.matchday === md);
 
   // Decisioni in sospeso: chi non decide tiene il fuoriclasse
+  const mgrRng = makeRng(`${l.seed}:mgr:${l.season}:${md}`);
   for (const b of clubs.values()) {
     if (b.state.pendingDecision === "fuoriclasse") { b.state.morale = Math.max(0, b.state.morale - 10); b.state.pendingDecision = null; }
+    // dilemmi senza risposta: opzione prudente
+    if (b.state.dilemmas?.md === md) {
+      for (const pick of b.state.dilemmas.cards) {
+        if (pick.choice !== null) continue;
+        const d = DILEMMA_BY_ID.get(pick.id);
+        try { applyDilemma(b.club, b.state, pick, d?.def ?? 1, md, mgrRng); pick.result = `(scelta automatica) ${pick.result}`; } catch { pick.choice = d?.def ?? 1; }
+      }
+    }
+    if (b.isCpu) cpuManage(b.club, b.state);
   }
 
   const stmts: D1PreparedStatement[] = [];
   const summaries: DaySummary["matches"] = [];
+  const quotes: string[] = [];
   for (const m of today) {
     const H = clubs.get(m.home_id)!, A = clubs.get(m.away_id)!;
     const hc = choicesFor(H.club, H.state, H.isCpu, md), ac = choicesFor(A.club, A.state, A.isCpu, md);
@@ -151,6 +163,18 @@ async function playClaimed(env: Env, l: LeagueRow, md: number): Promise<{ matchd
     const derby = !!H.club.region && H.club.region === A.club.region;
     afterMatch(H.club, H.state, hc, res.homeGoals, res.awayGoals, true, derby, md);
     afterMatch(A.club, A.state, ac, res.awayGoals, res.homeGoals, false, derby, md);
+    H.state.homeBoost = 0;
+    // conferenze stampa
+    for (const [me, opp, gf, ga] of [[H, A, res.homeGoals, res.awayGoals], [A, H, res.awayGoals, res.homeGoals]] as const) {
+      const pr = me.state.press;
+      if (!pr || pr.md !== md) continue;
+      if (pr.tone === "umile") me.state.morale = Math.min(100, me.state.morale + 2);
+      if (pr.tone === "provocatoria") {
+        if (gf > ga) { me.state.morale = Math.min(100, me.state.morale + 8); opp.state.morale = Math.max(0, opp.state.morale - 5); quotes.push(`${me.owner} (${me.club.name}) aveva provocato ${opp.club.name} con «${pr.text}» e ha vinto ${gf}-${ga}.`); }
+        else if (gf < ga) { me.state.morale = Math.max(0, me.state.morale - 8); quotes.push(`${me.owner} (${me.club.name}) aveva provocato ${opp.club.name} con «${pr.text}» e ha perso ${gf}-${ga}: figuraccia.`); }
+        else quotes.push(`${me.owner} (${me.club.name}) aveva provocato ${opp.club.name} con «${pr.text}»: finisce ${gf}-${ga}.`);
+      }
+    }
     const data = { ...res, choices: [hc, ac], derby };
     stmts.push(env.DB.prepare("UPDATE matches SET played = 1, home_goals = ?, away_goals = ?, data = ? WHERE id = ?").bind(res.homeGoals, res.awayGoals, JSON.stringify(data), m.id));
     m.played = 1; m.home_goals = res.homeGoals; m.away_goals = res.awayGoals;
@@ -170,6 +194,35 @@ async function playClaimed(env: Env, l: LeagueRow, md: number): Promise<{ matchd
   const dayEvents = md < l.total_matchdays ? [dailyEvent(evRng, list, md), dailyEvent(evRng, list, md)] : [];
   const events = dayEvents.map((e) => e.text);
 
+  // Allenamento, investimenti, pronostici
+  const results = new Map(today.map((m) => [m.id, [m.home_goals!, m.away_goals!] as [number, number]]));
+  for (const b of list) {
+    events.push(...dayAfter(b.club, b.state, md, mgrRng));
+    const p = b.state.predictions;
+    if (!b.isCpu && p && p.md === md) {
+      const pts = predictionPoints(p, results);
+      b.state.predPoints = (b.state.predPoints ?? 0) + pts;
+      b.state.predLog = [...(b.state.predLog ?? []), { md, points: pts }];
+      b.state.budget = Math.round((b.state.budget + pts) * 10) / 10;
+    }
+  }
+
+  // Sfide dirette
+  const { results: chs } = await env.DB.prepare("SELECT * FROM challenges WHERE league_id = ? AND season = ? AND matchday = ? AND status IN ('proposta','accettata')").bind(l.id, l.season, md).all<any>();
+  for (const ch of chs) {
+    if (ch.status === "proposta") { stmts.push(env.DB.prepare("UPDATE challenges SET status = 'annullata' WHERE id = ?").bind(ch.id)); continue; }
+    const mt = today.find((m) => (m.home_id === ch.from_club && m.away_id === ch.to_club) || (m.home_id === ch.to_club && m.away_id === ch.from_club));
+    const F = clubs.get(ch.from_club), T = clubs.get(ch.to_club);
+    if (!mt || !F || !T) continue;
+    const fg = mt.home_id === F.id ? mt.home_goals! : mt.away_goals!, tg = mt.home_id === T.id ? mt.home_goals! : mt.away_goals!;
+    let result: string;
+    if (fg > tg) { F.state.budget += 2 * ch.stake; result = `${F.club.name} vince la sfida e incassa ${2 * ch.stake} M€`; }
+    else if (tg > fg) { T.state.budget += 2 * ch.stake; result = `${T.club.name} vince la sfida e incassa ${2 * ch.stake} M€`; }
+    else { F.state.budget += ch.stake; T.state.budget += ch.stake; result = "Pareggio: la posta torna ai presidenti"; }
+    quotes.push(`Sfida da ${ch.stake} M€ tra ${F.owner} e ${T.owner}: ${result}.`);
+    stmts.push(env.DB.prepare("UPDATE challenges SET status = 'chiusa', result = ? WHERE id = ?").bind(result, ch.id));
+  }
+
   // Mercato del giro di boa
   const half = l.total_matchdays / 2;
   let marketOpen = l.market_open;
@@ -188,6 +241,7 @@ async function playClaimed(env: Env, l: LeagueRow, md: number): Promise<{ matchd
     stmts.push(env.DB.prepare("UPDATE offers SET status = 'scaduta' WHERE league_id = ? AND season = ? AND status = 'aperta'").bind(l.id, l.season));
   }
 
+  for (const b of list) b.state.budget = Math.round(b.state.budget * 10) / 10;
   for (const b of list) stmts.push(env.DB.prepare("UPDATE clubs SET club = ?, state = ? WHERE id = ?").bind(JSON.stringify(b.club), JSON.stringify(b.state), b.id));
 
   const played = allMatches.filter((m) => m.played).map((m) => ({ matchday: m.matchday, homeId: m.home_id, awayId: m.away_id, homeGoals: m.home_goals!, awayGoals: m.away_goals! }));
@@ -238,7 +292,7 @@ async function playClaimed(env: Env, l: LeagueRow, md: number): Promise<{ matchd
   try {
   const day: DaySummary = {
     league: l.name, season: l.season, matchday: md, total: l.total_matchdays, journal: journalFor(l.season),
-    matches: summaries, events,
+    matches: summaries, events, quotes,
     table: rowsS.map((r, i) => ({ pos: i + 1, name: r.name, pt: r.pt, owner: r.owner })),
     final,
   };
@@ -304,7 +358,7 @@ export function publicClub(b: ClubBundle & { owner: string }) {
   return {
     id: b.id, owner: b.owner, isCpu: b.isCpu, name: c.name, colors: c.colors, crest: c.crest, city: c.city, blasone: c.blasone,
     ratings: b.state.ratings, voto: c.voto, classe: c.classe, coachLabel: c.coachLabel, coachName: c.coachName ?? null, preferredModule: c.preferredModule,
-    stadium: c.stadium.label, fans: c.fans.label, fuoriclasse: c.fuoriclasse, sponsor: c.sponsor, form: b.state.lastResults,
+    stadium: c.stadium.label, fans: c.fans.label, fuoriclasse: c.fuoriclasse, sponsor: c.sponsor, form: b.state.lastResults, predPoints: b.state.predPoints ?? 0, investments: b.state.investments ?? [],
     initialRatings: c.ratings,
   };
 }

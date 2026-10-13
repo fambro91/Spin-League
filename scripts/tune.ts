@@ -4,6 +4,7 @@ import { newCreation, doSpin } from "../shared/wheels";
 import { computeClub, cpuIdentity, initialState } from "../shared/club";
 import { simulateMatch } from "../shared/engine";
 import { afterMatch, bergerSchedule, cpuChoices, dailyEvent, standings, type ClubBundle } from "../shared/league";
+import { cpuManage, dayAfter } from "../shared/manager";
 
 const SEASONS = Number(process.argv[2] ?? 10000);
 const N = Number(process.argv[3] ?? 8);
@@ -26,6 +27,7 @@ for (let s = 0; s < SEASONS; s++) {
   const played: { matchday: number; homeId: string; awayId: string; homeGoals: number; awayGoals: number }[] = [];
   sched.forEach((round, r) => {
     const md = r + 1;
+    for (const c of clubs) cpuManage(c.club, c.state);
     for (const [hi, ai] of round) {
       const H = clubs[hi], A = clubs[ai];
       const hc = cpuChoices(H.club, H.state), ac = cpuChoices(A.club, A.state);
@@ -38,6 +40,7 @@ for (let s = 0; s < SEASONS; s++) {
       if (res.homeGoals > res.awayGoals) homeW++; else if (res.homeGoals === res.awayGoals) draws++;
     }
     dailyEvent(rng, clubs, md); dailyEvent(rng, clubs, md);
+    for (const c of clubs) dayAfter(c.club, c.state, md, rng);
   });
   const rows = standings(clubs.map((c) => ({ id: c.id, name: c.club.name, colors: c.club.colors, owner: "" })), played, "s" + s);
   const best = [...clubs].sort((a, b) => b.club.voto - a.club.voto)[0];
