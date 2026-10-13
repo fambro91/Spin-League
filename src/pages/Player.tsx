@@ -13,6 +13,7 @@ import { AppBar } from "../components/AppBar";
 import { IcBall, IcBell, IcBoard, IcCalendar, IcChat, IcCompass, IcNews, IcRotate, IcShield, IcGear, IcStar, IcTrophy, IcWarn } from "../components/Icons";
 import { MODULI, REPARTI, REPARTO_LABEL, type Reparto } from "../../shared/types";
 import { marketCost, marketIncome } from "../../shared/league";
+import { TRAITS, type TraitId } from "../../shared/traits";
 
 type Tab = "oggi" | "squadra" | "classifica" | "risultati" | "notizie";
 const TABS: { id: Tab; label: string; ico: React.ReactNode }[] = [
@@ -80,7 +81,7 @@ export function Player({ token }: { token: string }) {
       <div className="tabbar"><nav>
         {TABS.map((t) => <button key={t.id} aria-current={tab === t.id ? "page" : undefined} onClick={() => setTab(t.id)}><span className="ico" aria-hidden>{t.ico}</span>{t.label}{t.id === "oggi" && unseenMd ? <span className="live">NUOVA</span> : null}</button>)}
       </nav></div>
-      {clubModal && <ClubModal club={clubsById.get(clubModal)} onClose={() => setClubModal(null)} />}
+      {clubModal && <ClubModal club={clubsById.get(clubModal)} rival={clubsById.get(clubsById.get(clubModal)?.rivalId)} onClose={() => setClubModal(null)} />}
       {matchModal && <MatchModal token={token} id={matchModal} clubsById={clubsById} onClose={() => setMatchModal(null)} />}
       {serata && <Serata token={token} md={serata} d={d} onClose={() => { setSerata(null); load(); }} />}
       {sheet === "tactics" && <TacticsSheet d={d} token={token} onClose={(ok) => { setSheet(null); if (ok) { setToast("Formazione confermata per stasera."); load(); } }} />}
@@ -345,7 +346,7 @@ function MarketSheet({ d, token, reload, onClose }: { d: any; token: string; rel
           {REPARTI.map((r) => (
             <div key={r} className="market-row">
               <span>{REPARTO_LABEL[r]} <strong>{st.ratings[r]}</strong></span>
-              <button className="btn small" onClick={() => act(() => api(`me/${token}/market`, { body: { op: "buy", rep: r } }), `${REPARTO_LABEL[r]} +2.`)}>+2 · {marketCost(st.ratings[r])} M€</button>
+              <button className="btn small" onClick={() => act(() => api(`me/${token}/market`, { body: { op: "buy", rep: r } }), `${REPARTO_LABEL[r]} +2.`)}>+2 · {marketCost(st.ratings[r], (d.mine.club.traits ?? []).includes("pres_affari") ? 0.8 : 1)} M€</button>
               <button className="btn ghost small" onClick={() => act(() => api(`me/${token}/market`, { body: { op: "sell", rep: r } }), `${REPARTO_LABEL[r]} −2.`)}>−2 · +{marketIncome(st.ratings[r])} M€</button>
             </div>
           ))}
@@ -386,7 +387,7 @@ function MarketSheet({ d, token, reload, onClose }: { d: any; token: string; rel
 
 /* ---------------- SQUADRA ---------------- */
 
-function ClubCard({ c, state }: { c: any; state?: any }) {
+function ClubCard({ c, state, rival }: { c: any; state?: any; rival?: any }) {
   const ratings = state?.ratings ?? c.ratings;
   const rows: [string, string][] = [
     ["Allenatore", c.coachName ? `${c.coachName} (${c.coachLabel})` : c.coachLabel],
@@ -414,6 +415,7 @@ function ClubCard({ c, state }: { c: any; state?: any }) {
         <div className="kpi"><div className="lab">Classe</div><div className="num amber">{c.classe}</div></div>
       </div>
       <div className="rows">{rows.map(([k, v]) => <div className="r" key={k}><span>{k}</span><span>{v}</span></div>)}</div>
+      <Traits c={c} rival={rival} />
       {state && (
         <div className="kpis" style={{ marginTop: 12 }}>
           <div><div className="row spread small"><span>Condizione</span><span>{state.cond}%</span></div><Bar value={state.cond} color={state.cond < 60 ? "#e0343f" : "#7ee08a"} /></div>
@@ -421,6 +423,32 @@ function ClubCard({ c, state }: { c: any; state?: any }) {
         </div>
       )}
       <p className="small muted" style={{ marginTop: 10 }}>Nel radar, il profilo tratteggiato mostra i valori di partenza.</p>
+    </div>
+  );
+}
+
+function Traits({ c, rival }: { c: any; rival?: any }) {
+  const list: string[] = (c.traits ?? []).filter((t: string) => t in TRAITS);
+  if (!list.length && !rival) return null;
+  return (
+    <div className="traits">
+      <h3>Tratti speciali</h3>
+      {list.map((t) => {
+        const tr = TRAITS[t as TraitId];
+        return (
+          <div key={t} className="trait">
+            <span className="trait-ic" aria-hidden>{tr.icon}</span>
+            <span><strong>{tr.label}</strong><span className="small muted"> · {tr.desc}</span></span>
+          </div>
+        );
+      })}
+      {rival && (
+        <div className="trait rival">
+          <span className="trait-ic" aria-hidden>⚔️</span>
+          <span><strong>Rivale storica: {rival.name}</strong><span className="small muted"> · derby: morale doppio a chi vince</span></span>
+        </div>
+      )}
+      {!rival && list.includes("riv_nemesi") && <p className="small muted">La nemesi non c'è ancora: sarà la prima squadra che vi batte.</p>}
     </div>
   );
 }
@@ -443,7 +471,7 @@ function ClubTab({ d, token, reload }: Ctx) {
   return (
     <>
       <AppBar title="Il tuo club" />
-      <ClubCard c={{ ...mine.club, owner: d.player.name }} state={mine.state} />
+      <ClubCard c={{ ...mine.club, owner: d.player.name }} state={mine.state} rival={d.clubs.find((x: any) => x.id === mine.state.rivalId)} />
       {d.league.status !== "setup" && <ManagementPanel d={d} token={token} reload={reload} />}
       <div className="panel">
         <div className="tabs" role="tablist">
@@ -591,14 +619,14 @@ function SeasonEnd({ d }: { d: any }) {
   );
 }
 
-function ClubModal({ club, onClose }: { club: any; onClose: () => void }) {
+function ClubModal({ club, rival, onClose }: { club: any; rival?: any; onClose: () => void }) {
   useEffect(() => { const k = (e: KeyboardEvent) => e.key === "Escape" && onClose(); window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [onClose]);
   if (!club) return null;
   return (
     <div className="modal" role="dialog" aria-label={club.name}>
       <div className="wrap">
         <AppBar title="Scheda club" onBack={onClose} />
-        <ClubCard c={club} />
+        <ClubCard c={club} rival={rival} />
       </div>
     </div>
   );

@@ -7,7 +7,7 @@ import { makeRng, cryptoRng, randomToken } from "../shared/rng";
 import { newCreation, doSpin } from "../shared/wheels";
 import { computeClub, cpuIdentity, initialState } from "../shared/club";
 import { simulateMatch } from "../shared/engine";
-import { afterMatch, bergerSchedule, choicesFor, dailyEvent, marketOp, seasonAwards, standings, type ClubBundle } from "../shared/league";
+import { afterMatch, assignRivals, bergerSchedule, choicesFor, dailyEvent, isDerby, marketDiscount, marketOp, maybeNemesis, penaltyOf, seasonAwards, standings, type ClubBundle } from "../shared/league";
 import { aiChronicle, journalFor, type DaySummary } from "./chronicle";
 import { applyDilemma, cpuManage, dayAfter, DILEMMA_BY_ID, predictionPoints } from "../shared/manager";
 import { esc, tgSend } from "./telegram";
@@ -85,14 +85,24 @@ export async function startLeague(env: Env, l: LeagueRow, totalTeams: number, fi
   const stmts: D1PreparedStatement[] = [];
   const all: { id: string }[] = humans.map((h) => ({ id: h.id }));
   const rng = cryptoRng();
+  const humanBundles = humans.map((h) => bundle(h as any));
+  const cpu: ClubBundle[] = [];
+  const cpuCreation = new Map<string, string>();
   for (let i = humans.length; i < n; i++) {
     const cs = newCreation();
     while (cs.queue.length) doSpin(cs, rng);
     const cid = id();
     const club = computeClub(cs.draft, cpuIdentity(cid, cs.draft.city ?? "Lucca"), cid);
-    stmts.push(env.DB.prepare("INSERT INTO clubs (id, league_id, season, player_id, is_cpu, status, creation, club, state, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
-      .bind(cid, l.id, l.season, null, 1, "ready", JSON.stringify(cs), JSON.stringify(club), JSON.stringify(initialState(club)), nowIso()));
+    cpu.push({ id: cid, club, state: initialState(club), isCpu: true });
+    cpuCreation.set(cid, JSON.stringify(cs));
     all.push({ id: cid });
+  }
+  // rivalità storiche dalle ruote speciali
+  const rivalNotes = assignRivals([...humanBundles, ...cpu], rng);
+  for (const b of humanBundles) stmts.push(env.DB.prepare("UPDATE clubs SET state = ? WHERE id = ?").bind(JSON.stringify(b.state), b.id));
+  for (const b of cpu) {
+    stmts.push(env.DB.prepare("INSERT INTO clubs (id, league_id, season, player_id, is_cpu, status, creation, club, state, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
+      .bind(b.id, l.id, l.season, null, 1, "ready", cpuCreation.get(b.id)!, JSON.stringify(b.club), JSON.stringify(b.state), nowIso()));
   }
   // ordine casuale nel calendario
   for (let i = all.length - 1; i > 0; i--) { const j = rng.int(0, i); [all[i], all[j]] = [all[j], all[i]]; }
@@ -110,6 +120,7 @@ export async function startLeague(env: Env, l: LeagueRow, totalTeams: number, fi
   await env.DB.batch(stmts);
   const msg = `⚽ <b>${esc(l.name)}: si parte!</b>\n${n} squadre, ${sched.length} giornate. Prima giornata il ${formatDate(start)} alle 21:00.`;
   await addNews(env, l, null, "info", "Si parte!", `${n} squadre, ${sched.length} giornate. Prima giornata il ${formatDate(start)} alle 21:00.`);
+  if (rivalNotes.length) await addNews(env, l, null, "info", "Rivalità storiche", rivalNotes.join("\n"));
   await tgSend(env, l.tg_chat, msg);
 }
 
@@ -167,10 +178,15 @@ async function playClaimed(env: Env, l: LeagueRow, md: number): Promise<{ matchd
   for (const m of today) {
     const H = clubs.get(m.home_id)!, A = clubs.get(m.away_id)!;
     const hc = choicesFor(H.club, H.state, H.isCpu, md), ac = choicesFor(A.club, A.state, A.isCpu, md);
-    const res: MatchResult = simulateMatch({ club: H.club, state: H.state, choices: hc, home: true }, { club: A.club, state: A.state, choices: ac, home: false }, md, `${l.seed}:${m.id}`);
-    const derby = !!H.club.region && H.club.region === A.club.region;
+    const derby = isDerby(H, A);
+    const res: MatchResult = simulateMatch({ club: H.club, state: H.state, choices: hc, home: true, derby }, { club: A.club, state: A.state, choices: ac, home: false, derby }, md, `${l.seed}:${m.id}`);
     afterMatch(H.club, H.state, hc, res.homeGoals, res.awayGoals, true, derby, md);
     afterMatch(A.club, A.state, ac, res.awayGoals, res.homeGoals, false, derby, md);
+    if (res.homeGoals !== res.awayGoals) {
+      const [w, lo] = res.homeGoals > res.awayGoals ? [H, A] : [A, H];
+      const q = maybeNemesis(lo, w);
+      if (q) quotes.push(q);
+    }
     H.state.homeBoost = 0;
     // conferenze stampa
     for (const [me, opp, gf, ga] of [[H, A, res.homeGoals, res.awayGoals], [A, H, res.awayGoals, res.homeGoals]] as const) {
@@ -240,7 +256,7 @@ async function playClaimed(env: Env, l: LeagueRow, md: number): Promise<{ matchd
       b.state.marketOps = 0; b.state.marketDelta = {};
       if (b.isCpu) {
         const low = (["por", "dif", "cen", "att"] as Reparto[]).sort((x, y) => b.state.ratings[x] - b.state.ratings[y])[0];
-        marketOp(b.state, "buy", low);
+        marketOp(b.state, "buy", low, marketDiscount(b.club));
       }
     }
     events.push("Si apre il mercato del giro di boa: un giorno per rinforzarsi.");
@@ -253,7 +269,7 @@ async function playClaimed(env: Env, l: LeagueRow, md: number): Promise<{ matchd
   for (const b of list) stmts.push(env.DB.prepare("UPDATE clubs SET club = ?, state = ? WHERE id = ?").bind(JSON.stringify(b.club), JSON.stringify(b.state), b.id));
 
   const played = allMatches.filter((m) => m.played).map((m) => ({ matchday: m.matchday, homeId: m.home_id, awayId: m.away_id, homeGoals: m.home_goals!, awayGoals: m.away_goals! }));
-  const rowsS = standings(rows.map((r) => ({ id: r.id, name: clubs.get(r.id)!.club.name, colors: clubs.get(r.id)!.club.colors, owner: r.owner })), played, l.seed);
+  const rowsS = standings(rows.map((r) => ({ id: r.id, name: clubs.get(r.id)!.club.name, colors: clubs.get(r.id)!.club.colors, owner: r.owner, pen: penaltyOf(clubs.get(r.id)!.club) })), played, l.seed);
   const final = md === l.total_matchdays;
 
   let history = JSON.parse(l.history || "[]");
@@ -350,7 +366,7 @@ export function publicClub(b: ClubBundle & { owner: string }) {
     id: b.id, owner: b.owner, isCpu: b.isCpu, name: c.name, colors: c.colors, crest: c.crest, city: c.city, blasone: c.blasone,
     ratings: b.state.ratings, voto: c.voto, classe: c.classe, coachLabel: c.coachLabel, coachName: c.coachName ?? null, preferredModule: c.preferredModule,
     stadium: c.stadium.label, fans: c.fans.label, fuoriclasse: c.fuoriclasse, sponsor: c.sponsor, form: b.state.lastResults, predPoints: b.state.predPoints ?? 0, investments: b.state.investments ?? [],
-    initialRatings: c.ratings, roster: c.roster,
+    initialRatings: c.ratings, roster: c.roster, traits: c.traits ?? [], rivalId: b.state.rivalId ?? null, penalty: penaltyOf(c),
   };
 }
 

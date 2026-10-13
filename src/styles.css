@@ -426,3 +426,27 @@ textarea { width: 100%; background: rgba(0, 0, 0, 0.28); border: 1px solid var(-
 .gfgs-bar i { display: block; height: 100%; border-radius: 4px; background: rgba(224,52,63,.75); }
 .gfgs-bar b { font-size: 12px; padding: 0 5px; }
 .gfgs-bar.l b { order: -1; }
+
+/* ---------- tratti e ruote speciali ---------- */
+.traits { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.trait { display: grid; grid-template-columns: 30px 1fr; gap: 8px; align-items: center; padding: 7px 10px; margin-bottom: 6px; border-radius: 10px;
+  background: linear-gradient(90deg, rgba(168, 85, 247, 0.22), rgba(168, 85, 247, 0.04)); border: 1px solid rgba(196, 140, 255, 0.35); font-size: 15px; }
+.trait.rival { background: linear-gradient(90deg, rgba(224, 52, 63, 0.25), rgba(224, 52, 63, 0.04)); border-color: rgba(224, 52, 63, 0.45); }
+.trait-ic { font-size: 20px; text-align: center; }
+.question.special { border-color: #c48cff; box-shadow: 0 0 24px rgba(168, 85, 247, 0.35); }
+.question.special .q-title { color: #d9b8ff; }
+.wheel-box.special { filter: drop-shadow(0 0 30px rgba(168, 85, 247, 0.6)); }
+.ribbon.special { background: linear-gradient(180deg, #d9b8ff, #8b3fe0); color: #1b0633; }
+.unlock { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; text-align: center; padding: 24px;
+  background: radial-gradient(circle at 50% 40%, rgba(120, 50, 200, 0.92), rgba(10, 4, 24, 0.97)); }
+.unlock .tag { font-family: var(--display); font-weight: 800; letter-spacing: 0.12em; color: #d9b8ff; font-size: 16px; text-transform: uppercase; }
+.unlock .big { font-family: var(--display); font-weight: 900; font-size: clamp(40px, 12vw, 76px); line-height: 0.95; margin: 10px 0; color: #fff; text-shadow: 0 0 36px rgba(196, 140, 255, 0.9); }
+.unlock .em { font-size: 64px; display: block; margin-bottom: 6px; }
+.unlock .why { color: var(--chalk-dim); margin: 0 0 22px; font-size: 17px; }
+@media (prefers-reduced-motion: no-preference) {
+  .unlock .em { animation: unlock-spin 0.9s cubic-bezier(0.2, 1.4, 0.4, 1) both; }
+  .unlock .big { animation: pop 0.6s 0.15s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+}
+@keyframes unlock-spin { from { transform: rotate(-200deg) scale(0.2); opacity: 0; } to { transform: none; opacity: 1; } }
+.trait-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 10px; }
+.trait-chip { font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: rgba(168, 85, 247, 0.25); border: 1px solid rgba(196, 140, 255, 0.5); }

@@ -1,13 +1,14 @@
 import type { Atteggiamento, Choices, Club, ClubState, MatchEvent, MatchResult, MatchStats, Modulo, Ratings, RosterPlayer } from "./types";
 import { makeRng, type Rng } from "./rng";
 import { clamp } from "./club";
+import { has } from "./traits";
 
 export const XG_BASE = Number((globalThis as any).process?.env?.XG_BASE ?? 1.25);
 export const XG_SCALE = Number((globalThis as any).process?.env?.XG_SCALE ?? 33);
 export const OFFENSIVE: Modulo[] = ["4-3-3", "3-4-3"];
 export const DEFENSIVE: Modulo[] = ["5-3-2", "4-5-1"];
 
-export type TeamCtx = { club: Club; state: ClubState; choices: Choices; home: boolean };
+export type TeamCtx = { club: Club; state: ClubState; choices: Choices; home: boolean; derby?: boolean };
 
 /** Reparti effettivi per la partita: permanenti + infortuni/squalifiche + modulo + stile + turnover. */
 export function effectiveRatings(t: TeamCtx, matchday: number): Ratings {
@@ -15,6 +16,7 @@ export function effectiveRatings(t: TeamCtx, matchday: number): Ratings {
   for (const m of t.state.modifiers) if (m.untilMatchday >= matchday) r[m.rep] += m.delta;
   const f = t.club.fuoriclasse;
   if (f && f.decays) r[f.ruolo] -= Math.min(f.bonus, Math.floor((matchday - 1) / 4));
+  if (f && t.derby && has(t.club, "marchio_derby")) r[f.ruolo] += f.bonus;
   const c = t.choices;
   if (OFFENSIVE.includes(c.modulo)) { r.att += 2; r.dif -= 2; }
   if (DEFENSIVE.includes(c.modulo)) { r.dif += 2; r.att -= 2; }
@@ -30,6 +32,7 @@ export function effectiveRatings(t: TeamCtx, matchday: number): Ratings {
 export function matchMorale(t: TeamCtx): number {
   let m = t.state.morale;
   if (t.choices.discorso === "motivare") m += 5;
+  if (has(t.club, "camp_leader") && t.club.fuoriclasse) m += 5;
   if (t.choices.discorso === "calmare") m += m > 50 ? -Math.min(10, m - 50) : Math.min(10, 50 - m);
   return clamp(m, 0, 100);
 }
@@ -38,7 +41,8 @@ export function strengths(t: TeamCtx, matchday: number) {
   const r = effectiveRatings(t, matchday);
   const off = 0.6 * r.att + 0.4 * r.cen;
   const dif = 0.6 * r.dif + 0.25 * r.por + 0.15 * r.cen;
-  const campo = t.home && !t.state.campoSqualificato ? t.club.fans.campo + (t.state.homeBoost ?? 0) + (t.state.investments?.includes("curva") ? 1 : 0) : 0;
+  const campo = t.home && !t.state.campoSqualificato ? t.club.fans.campo + (t.state.homeBoost ?? 0) + (t.state.investments?.includes("curva") ? 1 : 0)
+    : !t.home && has(t.club, "curva_trasferta") ? 1 : 0;
   const M = campo + (matchMorale(t) - 50) / 10 + (r.all - 70) / 10;
   const k = 0.85 + 0.15 * (t.state.cond / 100);
   return { off: (off + M) * k, dif: (dif + M) * k, r };
@@ -70,8 +74,9 @@ export function expectedGoals(home: TeamCtx, away: TeamCtx, matchday: number): [
   return [xh, xa];
 }
 
-function pickScorer(rng: Rng, roster: RosterPlayer[], fuori: string | undefined): RosterPlayer {
-  const group = rng.weighted([{ weight: 60 }, { weight: 30 }, { weight: 10 }]);
+function pickScorer(rng: Rng, roster: RosterPlayer[], fuori: string | undefined, club?: Club): RosterPlayer {
+  const w = has(club, "att_bomber") ? [75, 20, 5] : has(club, "att_falso9") ? [45, 45, 10] : [60, 30, 10];
+  const group = rng.weighted([{ weight: w[0] }, { weight: w[1] }, { weight: w[2] }]);
   const ruolo = (["ATT", "CEN", "DIF"] as const)[group];
   const pool = roster.filter((p) => p.ruolo === ruolo);
   const weighted = pool.map((p) => ({ p, weight: p.name === fuori ? 2 : 1 }));
@@ -80,12 +85,13 @@ function pickScorer(rng: Rng, roster: RosterPlayer[], fuori: string | undefined)
 
 export const ASSIST_RATE = 0.7;
 /** Ultimo passaggio: centrocampisti 45%, attaccanti 35%, difensori 20%; fuoriclasse peso doppio; mai il marcatore. */
-function pickAssist(rng: Rng, roster: RosterPlayer[], scorer: string, fuori: string | undefined): RosterPlayer | null {
-  const W = { CEN: 45, ATT: 35, DIF: 20, POR: 0 } as const;
+function pickAssist(rng: Rng, roster: RosterPlayer[], scorer: string, fuori: string | undefined, club?: Club): RosterPlayer | null {
+  const W = has(club, "att_falso9") ? { CEN: 60, ATT: 25, DIF: 15, POR: 0 } : { CEN: 45, ATT: 35, DIF: 20, POR: 0 };
+  const fw = has(club, "marchio_assist") ? 3 : 2;
   const pool = roster.filter((p) => p.name !== scorer && p.ruolo !== "POR");
   if (!pool.length) return null;
   const n = (r: RosterPlayer["ruolo"]) => pool.filter((p) => p.ruolo === r).length || 1;
-  const ws = pool.map((p) => ({ p, weight: (W[p.ruolo] / n(p.ruolo)) * (p.name === fuori ? 2 : 1) }));
+  const ws = pool.map((p) => ({ p, weight: (W[p.ruolo] / n(p.ruolo)) * (p.name === fuori ? fw : 1) }));
   return ws[rng.weighted(ws)].p;
 }
 
@@ -93,12 +99,12 @@ function pickSchema(rng: Rng, t: TeamCtx, r: Ratings, scorer: RosterPlayer, isGo
   if (isGoal && rng.chance(0.08)) return "rigore";
   const wide = ["4-3-3", "3-4-3", "4-4-2", "3-5-2", "5-3-2"].includes(t.choices.modulo);
   const opts = [
-    { id: "cross", weight: 2 + (wide ? 1 : 0) + (r.att > r.cen ? 1 : 0) },
+    { id: "cross", weight: 2 + (wide ? 1 : 0) + (r.att > r.cen ? 1 : 0) + (has(t.club, "att_tridente") ? 3 : 0) },
     { id: "fraseggio", weight: 2 + (r.cen >= r.att ? 1 : 0) + (t.club.coachStyle === "giochista" ? 2 : 0) },
     { id: "tiro_fuori", weight: 1 + (r.cen > r.att + 3 ? 2 : 0) },
     { id: "contropiede", weight: 1 + (t.choices.atteggiamento === "contropiede" ? 4 : 0) },
     { id: "recupero", weight: 0.5 + (t.choices.atteggiamento === "pressing" ? 4 : 0) },
-    { id: "piazzato", weight: 1 + (scorer.ruolo === "DIF" ? 8 : 0) },
+    { id: "piazzato", weight: 1 + (scorer.ruolo === "DIF" ? 8 : 0) + (scorer.name === t.club.fuoriclasse?.name && has(t.club, "marchio_punizioni") ? 6 : 0) },
   ];
   return opts[rng.weighted(opts)].id;
 }
@@ -140,13 +146,18 @@ export function simulateMatch(home: TeamCtx, away: TeamCtx, matchday: number, se
       if (other.red) lambda *= 1.3;
       const goals = Math.min(rng.poisson(lambda), 7 - me.goals);
       for (let g = 0; g < goals; g++) {
-        const scorer = pickScorer(rng, me.t.club.roster, me.t.club.fuoriclasse?.name);
+        let scorer = pickScorer(rng, me.t.club.roster, me.t.club.fuoriclasse?.name, me.t.club);
         me.goals++;
-        events.push({ minute: b * 15 + rng.int(1, 15), team: side, type: "gol", player: scorer.name, role: scorer.ruolo, schema: pickSchema(rng, me.t, me.r, scorer, true) });
+        const minute = b * 15 + rng.int(1, 15);
+        const schema = pickSchema(rng, me.t, me.r, scorer, true);
+        // il rigorista tira tutti i rigori
+        const fc = me.t.club.fuoriclasse;
+        if (schema === "rigore" && fc && has(me.t.club, "marchio_rigori")) scorer = me.t.club.roster.find((p) => p.name === fc.name) ?? scorer;
+        events.push({ minute, team: side, type: "gol", player: scorer.name, role: scorer.ruolo, schema });
       }
       const misses = rng.poisson(lambda * 1.5);
       for (let m = 0; m < misses; m++) {
-        const shooter = pickScorer(rng, me.t.club.roster, me.t.club.fuoriclasse?.name);
+        const shooter = pickScorer(rng, me.t.club.roster, me.t.club.fuoriclasse?.name, me.t.club);
         const kind = rng.weighted([{ weight: 5 }, { weight: 1 }, { weight: 4 }]);
         events.push({ minute: b * 15 + rng.int(1, 15), team: side, type: (["parata", "palo", "fuori"] as const)[kind], player: shooter.name, role: shooter.ruolo, schema: pickSchema(rng, me.t, me.r, shooter, false) });
       }
@@ -158,7 +169,9 @@ export function simulateMatch(home: TeamCtx, away: TeamCtx, matchday: number, se
   for (const e of events) {
     if (e.type !== "gol" || e.schema === "rigore" || !arng.chance(ASSIST_RATE)) continue;
     const t = teams[e.team].t;
-    const ap = pickAssist(arng, t.club.roster, e.player!, t.club.fuoriclasse?.name);
+    // lo specialista segna le punizioni da solo
+    if (e.schema === "piazzato" && e.player === t.club.fuoriclasse?.name && has(t.club, "marchio_punizioni")) continue;
+    const ap = pickAssist(arng, t.club.roster, e.player!, t.club.fuoriclasse?.name, t.club);
     if (ap) { e.assist = ap.name; e.assistRole = ap.ruolo; }
   }
   let h = 0, a = 0;

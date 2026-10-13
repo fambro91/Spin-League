@@ -3,6 +3,7 @@ import { REPARTO_LABEL } from "./types";
 import { clamp } from "./club";
 import type { Rng } from "./rng";
 import { makeRng } from "./rng";
+import { has } from "./traits";
 
 /** Calendario all'italiana (metodo del cerchio / Berger). Ritorno = andata a campi invertiti. */
 export function bergerSchedule(n: number): [number, number][][] {
@@ -29,9 +30,9 @@ export type Row = {
 
 export type PlayedMatch = { matchday: number; homeId: string; awayId: string; homeGoals: number; awayGoals: number };
 
-export function standings(clubs: { id: string; name: string; colors: [string, string]; owner: string }[], matches: PlayedMatch[], seed = "x"): Row[] {
+export function standings(clubs: { id: string; name: string; colors: [string, string]; owner: string; pen?: number }[], matches: PlayedMatch[], seed = "x"): Row[] {
   const rows = new Map<string, Row>();
-  for (const c of clubs) rows.set(c.id, { id: c.id, name: c.name, colors: c.colors, owner: c.owner, g: 0, v: 0, n: 0, p: 0, gf: 0, gs: 0, pt: 0, form: [] });
+  for (const c of clubs) rows.set(c.id, { id: c.id, name: c.name, colors: c.colors, owner: c.owner, g: 0, v: 0, n: 0, p: 0, gf: 0, gs: 0, pt: -(c.pen ?? 0), form: [] });
   const sorted = [...matches].sort((a, b) => a.matchday - b.matchday);
   for (const m of sorted) {
     const h = rows.get(m.homeId), a = rows.get(m.awayId);
@@ -92,15 +93,17 @@ export function afterMatch(c: Club, s: ClubState, ch: Choices, goalsFor: number,
   let m = s.morale;
   if (ch.discorso === "motivare") m += 5;
   if (ch.discorso === "calmare") m += m > 50 ? -Math.min(10, m - 50) : Math.min(10, 50 - m);
-  const mult = derby ? 2 : 1;
+  const mult = (derby ? 2 : 1) * (has(c, "pres_vulcanico") ? 2 : 1);
   const res: "V" | "N" | "P" = goalsFor > goalsAgainst ? "V" : goalsFor === goalsAgainst ? "N" : "P";
   if (res === "V") m += 8 * mult;
-  if (res === "P") m -= 6 * mult + (ch.discorso === "motivare" ? 5 : 0);
+  if (res === "P") m -= 6 * mult + (ch.discorso === "motivare" ? 5 : 0) + (has(c, "bach_trofei") ? 4 : 0);
   if (c.coachStyle === "motivatore") m = Math.max(40, m);
   s.morale = clamp(Math.round(m), 0, 100);
 
-  s.budget = Math.round((s.budget + (home ? c.stadium.incasso : 0) + (res === "V" ? 1 : 0)) * 10) / 10;
+  s.budget = Math.round((s.budget + (home ? c.stadium.incasso : 0) + (res === "V" ? 1 : 0) + (res === "V" && has(c, "pres_mecenate") ? 5 : 0)) * 10) / 10;
   if (home) s.campoSqualificato = false;
+  // curva calda: dopo una sconfitta in casa, 1 volta su 10 il campo viene squalificato
+  if (home && res === "P" && has(c, "curva_calda") && (matchday * 7 + goalsFor * 3 + goalsAgainst * 5) % 10 === 0) s.campoSqualificato = true;
   s.modifiers = s.modifiers.filter((x) => x.untilMatchday > matchday);
   s.choices = { ...s.choices, discorso: "nessuno" };
   s.lastResults = [...s.lastResults, res].slice(-5);
@@ -133,46 +136,51 @@ export function dailyEvent(rng: Rng, clubs: ClubBundle[], matchday: number): Day
     const ev = DAILY_EVENTS[evIdx];
     const b = rng.pick(clubs);
     const { club: c, state: s } = b;
-    const rep = rng.pick(EVENT_REPS);
+    let rep = rng.pick(EVENT_REPS);
+    let id = ev.id;
+    // campioni bizzosi e fragili: certi eventi capitano più spesso
+    if (id === "tranquilla" && c.fuoriclasse && has(c, "camp_bizzoso") && rng.chance(0.35)) id = "fuga";
+    if (id === "tranquilla" && c.fuoriclasse && has(c, "camp_fragile") && rng.chance(0.35)) { id = "infortunio"; rep = c.fuoriclasse.ruolo; }
     const R = REPARTO_LABEL[rep];
-    switch (ev.id) {
-      case "tranquilla": return { clubId: null, eventId: ev.id, eventIndex: evIdx, text: "Settimana tranquilla: nessuna notizia." };
+    const ei = id === ev.id ? evIdx : DAILY_EVENTS.findIndex((x) => x.id === id);
+    switch (id) {
+      case "tranquilla": return { clubId: null, eventId: id, eventIndex: ei, text: "Settimana tranquilla: nessuna notizia." };
       case "infortunio": {
         const dur = s.investments?.includes("medico") ? 2 : 3;
         s.modifiers.push({ rep, delta: -5, untilMatchday: matchday + dur, label: "Infortunio" });
-        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: infortunio, ${R} −5 per ${dur} giornate.` };
+        return { clubId: b.id, eventId: id, eventIndex: ei, text: `${c.name}: infortunio, ${R} −5 per ${dur} giornate.` };
       }
       case "polemica":
         s.morale = clamp(s.morale - 10, 0, 100);
-        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: polemica arbitrale, morale −10.` };
+        return { clubId: b.id, eventId: id, eventIndex: ei, text: `${c.name}: polemica arbitrale, morale −10.` };
       case "festa":
         s.morale = clamp(s.morale + 10, 0, 100);
-        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: tifosi in festa, morale +10.` };
+        return { clubId: b.id, eventId: id, eventIndex: ei, text: `${c.name}: tifosi in festa, morale +10.` };
       case "squalifica":
         s.modifiers.push({ rep, delta: -4, untilMatchday: matchday + 1, label: "Squalifica" });
-        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: squalifica, ${R} −4 nella prossima giornata.` };
+        return { clubId: b.id, eventId: id, eventIndex: ei, text: `${c.name}: squalifica, ${R} −4 nella prossima giornata.` };
       case "rissa":
         s.morale = clamp(s.morale - 15, 0, 100);
-        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: rissa nello spogliatoio, morale −15.` };
+        return { clubId: b.id, eventId: id, eventIndex: ei, text: `${c.name}: rissa nello spogliatoio, morale −15.` };
       case "mecenate":
         s.budget += 30;
-        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: arriva un mecenate, +30 M€.` };
+        return { clubId: b.id, eventId: id, eventIndex: ei, text: `${c.name}: arriva un mecenate, +30 M€.` };
       case "talento":
         s.ratings[rep] = clamp(s.ratings[rep] + 3, 40, 99);
-        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: talento dalla Primavera, ${R} +3.` };
+        return { clubId: b.id, eventId: id, eventIndex: ei, text: `${c.name}: talento dalla Primavera, ${R} +3.` };
       case "fuga":
         if (!c.fuoriclasse) continue;
         if (b.isCpu) {
-          if (rng.chance(0.5)) { sellFuoriclasse(c, s); return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: il fuoriclasse è stato venduto per 60 M€.` }; }
+          if (rng.chance(0.5)) { sellFuoriclasse(c, s); return { clubId: b.id, eventId: id, eventIndex: ei, text: `${c.name}: il fuoriclasse è stato venduto per 60 M€.` }; }
           s.morale = clamp(s.morale - 10, 0, 100);
-          return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: il fuoriclasse resta, ma lo spogliatoio è nervoso (morale −10).` };
+          return { clubId: b.id, eventId: id, eventIndex: ei, text: `${c.name}: il fuoriclasse resta, ma lo spogliatoio è nervoso (morale −10).` };
         }
         s.pendingDecision = "fuoriclasse";
-        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: ${c.fuoriclasse.name} vuole andare via. Il presidente deve decidere.` };
+        return { clubId: b.id, eventId: id, eventIndex: ei, text: `${c.name}: ${c.fuoriclasse.name} vuole andare via. Il presidente deve decidere.` };
       case "campo":
         if (!c.fans.ultras) continue;
         s.campoSqualificato = true;
-        return { clubId: b.id, eventId: ev.id, eventIndex: evIdx, text: `${c.name}: campo squalificato, prossima partita in casa senza fattore campo.` };
+        return { clubId: b.id, eventId: id, eventIndex: ei, text: `${c.name}: campo squalificato, prossima partita in casa senza fattore campo.` };
     }
   }
   return { clubId: null, eventId: "tranquilla", eventIndex: 0, text: "Settimana tranquilla: nessuna notizia." };
@@ -186,17 +194,17 @@ export function sellFuoriclasse(c: Club, s: ClubState) {
   s.pendingDecision = null;
 }
 
-export function marketCost(value: number) { return 2 * Math.max(0, value - 50); }
+export function marketCost(value: number, discount = 1) { return Math.round(2 * Math.max(0, value - 50) * discount); }
 export function marketIncome(value: number) { return Math.max(0, value - 50); }
 
-export function marketOp(s: ClubState, op: "buy" | "sell", rep: Reparto): string | null {
+export function marketOp(s: ClubState, op: "buy" | "sell", rep: Reparto, discount = 1): string | null {
   if (s.marketOps >= 2) return "Hai già fatto 2 operazioni in questa finestra.";
   const v = s.ratings[rep];
   const delta = s.marketDelta[rep] ?? 0;
   if (op === "buy") {
     if (delta + 2 > 4) return "Questo reparto può salire al massimo di 4 punti per finestra.";
     if (v >= 99) return "Reparto già al massimo.";
-    const cost = marketCost(v);
+    const cost = marketCost(v, discount);
     if (s.budget < cost) return `Servono ${cost} M€, ne hai ${s.budget}.`;
     s.budget -= cost;
     s.ratings[rep] = clamp(v + 2, 40, 99);
@@ -243,3 +251,37 @@ export function seasonAwards(rows: Row[], clubs: ClubBundle[], scorers: Map<stri
   }
   return awards;
 }
+
+/** Derby: stessa regione oppure rivalità nata dalle ruote speciali. */
+export function isDerby(h: ClubBundle, a: ClubBundle): boolean {
+  return (!!h.club.region && h.club.region === a.club.region) || h.state.rivalId === a.id || a.state.rivalId === h.id;
+}
+
+/** Assegna le rivali all'avvio del campionato. La "nemesi" resta vuota finché qualcuno non ti batte. */
+export function assignRivals(clubs: ClubBundle[], rng: Rng): string[] {
+  const notes: string[] = [];
+  for (const b of clubs) {
+    const others = clubs.filter((x) => x.id !== b.id);
+    if (!others.length) continue;
+    let r: ClubBundle | undefined;
+    if (has(b.club, "riv_derby")) {
+      const near = others.filter((x) => x.club.region && x.club.region === b.club.region);
+      r = near.length ? rng.pick(near) : rng.pick(others);
+    } else if (has(b.club, "riv_forte")) r = [...others].sort((x, y) => y.club.voto - x.club.voto)[0];
+    else if (has(b.club, "riv_destino")) r = rng.pick(others);
+    else continue;
+    b.state.rivalId = r.id;
+    notes.push(`${b.club.name} ha una nuova rivale storica: ${r.club.name}.`);
+  }
+  return notes;
+}
+
+/** Nemesi: la prima squadra che ti batte diventa la tua rivale. */
+export function maybeNemesis(loser: ClubBundle, winner: ClubBundle): string | null {
+  if (!has(loser.club, "riv_nemesi") || loser.state.rivalId) return null;
+  loser.state.rivalId = winner.id;
+  return `${loser.club.name} non dimentica: da oggi ${winner.club.name} è la sua nemesi.`;
+}
+
+export const penaltyOf = (c: Club) => (has(c, "salv_penal") ? 3 : 0);
+export const marketDiscount = (c: Club) => (has(c, "pres_affari") ? 0.8 : 1);

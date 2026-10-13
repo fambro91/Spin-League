@@ -1,3 +1,4 @@
+import { TRAITS, type TraitId } from "../../shared/traits";
 import { useMemo, useState } from "react";
 import { api } from "../api";
 import { computeClub } from "../../shared/club";
@@ -37,6 +38,11 @@ export function Identity({ token, draft, seed, onDone }: { token: string; draft:
         <div className="small">Allenatore: <strong>{preview.coachName}</strong> ({preview.coachLabel})</div>
         <Radar ratings={preview.ratings} />
         <div className="voto"><span className="num">{preview.voto}</span><span className="classe">{preview.classe}</span></div>
+        {(preview.traits ?? []).length > 0 && (
+          <div className="trait-chips">
+            {(preview.traits ?? []).filter((t) => t in TRAITS).map((t) => <span key={t} className="trait-chip" title={TRAITS[t as TraitId].desc}>{TRAITS[t as TraitId].icon} {TRAITS[t as TraitId].label}</span>)}
+          </div>
+        )}
       </div>
       <form className="panel" onSubmit={save}>
         {err && <div className="error">{err}</div>}

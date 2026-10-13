@@ -6,7 +6,7 @@ import {
 import { leagueStats } from "../shared/stats";
 import { randomToken } from "../shared/rng";
 import { computeClub, initialState, clamp } from "../shared/club";
-import { marketOp, sellFuoriclasse, standings } from "../shared/league";
+import { marketDiscount, marketOp, penaltyOf, sellFuoriclasse, standings } from "../shared/league";
 import { applyDilemma, buyInvestment, dealDilemmas, TRAININGS } from "../shared/manager";
 import { cryptoRng } from "../shared/rng";
 import { ATTEGGIAMENTI, MODULI, REPARTI, type ClubState, type CreationState, type Identity, type Reparto, type Training } from "../shared/types";
@@ -45,7 +45,7 @@ async function leagueView(env: Env, l: LeagueRow, myClubId: string | null) {
   const bundles = ready.map(bundle);
   const matches = await loadMatches(env, l);
   const played = matches.filter((m) => m.played).map((m) => ({ matchday: m.matchday, homeId: m.home_id, awayId: m.away_id, homeGoals: m.home_goals!, awayGoals: m.away_goals! }));
-  const table = l.status === "setup" ? [] : standings(bundles.map((b) => ({ id: b.id, name: b.club.name, colors: b.club.colors, owner: b.owner })), played, l.seed);
+  const table = l.status === "setup" ? [] : standings(bundles.map((b) => ({ id: b.id, name: b.club.name, colors: b.club.colors, owner: b.owner, pen: penaltyOf(b.club) })), played, l.seed);
   const { results: news } = await env.DB.prepare("SELECT id, matchday, kind, title, body, created_at FROM news WHERE league_id = ? AND season = ? ORDER BY id DESC LIMIT 40").bind(l.id, l.season).all();
   const next = l.matchday_played + 1;
   return {
@@ -272,7 +272,7 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
       if (!l.market_open) throw new HttpError(400, "Il mercato è chiuso.");
       const b = await body<{ op?: "buy" | "sell"; rep?: Reparto }>(req);
       if (!b.rep || !REPARTI.includes(b.rep) || (b.op !== "buy" && b.op !== "sell")) throw new HttpError(400, "Operazione non valida.");
-      const err = marketOp(state, b.op, b.rep);
+      const err = marketOp(state, b.op, b.rep, marketDiscount(JSON.parse(c.club!)));
       if (err) throw new HttpError(400, err);
       await save();
       return json({ ok: true });

@@ -11,6 +11,39 @@ export type Wheel = {
   emoji: string;
   palette: "rainbow" | "pitch" | "gold" | "blue" | "red" | "purple" | "teal";
   segments: Segment[];
+  /** Ruota speciale: si sblocca solo con certi risultati e lascia un tratto al club. */
+  special?: boolean;
+  /** Perché si è sbloccata (mostrato nell'animazione). */
+  unlock?: string;
+};
+
+const sp = (id: string, title: string, question: string, emoji: string, unlock: string, segs: [string, number, string][]): Wheel => ({
+  id, title, subtitle: question, question, emoji, palette: "purple", special: true, unlock,
+  segments: segs.map(([label, weight, data]) => ({ label, weight, data })),
+});
+
+/** Ruote speciali: data = id del tratto. */
+export const SPECIAL_WHEELS: Record<string, Wheel> = {
+  sp_presidente: sp("sp_presidente", "Che presidente è?", "Hai un proprietario ricchissimo: che tipo è?", "🎩", "Proprietà ricca", [
+    ["Mecenate", 25, "pres_mecenate"], ["Vulcanico", 25, "pres_vulcanico"], ["Tifoso", 25, "pres_tifoso"], ["Affarista", 25, "pres_affari"]]),
+  sp_salvataggio: sp("sp_salvataggio", "Come si salva il club?", "La società è in crisi: come ne esce?", "🛟", "Società in crisi", [
+    ["Azionariato", 30, "salv_popolare"], ["Svende", 25, "salv_svende"], ["Last minute", 30, "salv_last"], ["Penalità −3", 15, "salv_penal"]]),
+  sp_bacheca: sp("sp_bacheca", "Com'è la bacheca?", "Sei una big storica: cosa c'è in bacheca?", "🏆", "Big storica", [
+    ["Trofei", 35, "bach_trofei"], ["Anni '80", 35, "bach_80"], ["Coppa europea", 30, "bach_coppa"]]),
+  sp_rivale: sp("sp_rivale", "Chi è la tua rivale storica?", "Ogni città ha un nemico sportivo: chi sarà il tuo?", "⚔️", "Club di città", [
+    ["Il derby", 35, "riv_derby"], ["La più forte", 20, "riv_forte"], ["Chi ti batte", 25, "riv_nemesi"], ["Il destino", 20, "riv_destino"]]),
+  sp_paese: sp("sp_paese", "La favola del paese", "800 abitanti e una squadra: come va?", "🏘️", "Paesino di 800 abitanti", [
+    ["Paese allo stadio", 30, "paese_stadio"], ["Dopolavoristi", 25, "paese_dopo"], ["Il sindaco", 25, "paese_sindaco"], ["Il parroco", 20, "paese_parroco"]]),
+  sp_curva: sp("sp_curva", "Che curva hai?", "Hai gli ultras: che curva è?", "🎆", "Ultras", [
+    ["Coreografie", 30, "curva_coreo"], ["In trasferta", 25, "curva_trasferta"], ["Curva calda", 25, "curva_calda"], ["Gemellata", 20, "curva_gemellata"]]),
+  sp_panchina: sp("sp_panchina", "Come va in panchina?", "La bandiera senza patentino: come se la cava?", "🧓", "Ex bandiera in panchina", [
+    ["Miracolo", 30, "panch_miracolo"], ["Disastro", 35, "panch_disastro"], ["Vice esperto", 35, "panch_vice"]]),
+  sp_attacco: sp("sp_attacco", "Che attacco hai?", "Il tuo attacco è super: come segna?", "⚡", "Attacco ottimo o eccellente", [
+    ["Bomber d'area", 35, "att_bomber"], ["Tridente", 35, "att_tridente"], ["Falso nueve", 30, "att_falso9"]]),
+  sp_campione: sp("sp_campione", "Che tipo di campione?", "La tua stella è un campione: che carattere ha?", "🦁", "Campione in rosa", [
+    ["Leader", 30, "camp_leader"], ["Bizzoso", 25, "camp_bizzoso"], ["Fragile", 20, "camp_fragile"], ["Eterno", 25, "camp_eterno"]]),
+  sp_marchio: sp("sp_marchio", "Il suo marchio di fabbrica", "Cosa sa fare meglio la tua stella?", "⭐", "Fuoriclasse in rosa", [
+    ["Rigorista", 25, "marchio_rigori"], ["Uomo derby", 25, "marchio_derby"], ["Punizioni", 25, "marchio_punizioni"], ["Uomo assist", 25, "marchio_assist"]]),
 };
 
 const CITIES: [string, string][] = [
@@ -160,6 +193,7 @@ export const WHEELS: Record<string, Wheel> = {
     id: "reparto_caso", question: "Dove cade il premio?", title: "Reparto a caso", subtitle: "Dove cade il premio", emoji: "🎲", palette: "rainbow",
     segments: (["por", "dif", "cen", "att", "pan", "all"] as Reparto[]).map((r) => ({ label: REPARTO_LABEL[r], weight: 1, data: r })),
   },
+  ...SPECIAL_WHEELS,
 };
 
 export const INITIAL_QUEUE = [
@@ -177,12 +211,41 @@ export function newCreation(): CreationState {
     streak: 0,
     luckyCount: 0,
     pendingReparto: null,
-    draft: { repMods: {}, moraleBonus: 0, luckyOps: [], notes: [] },
+    draft: { repMods: {}, moraleBonus: 0, luckyOps: [], notes: [], traits: [] },
   };
 }
 
 function countsForStreak(w: Wheel) {
-  return w.segments.some((s) => s.lucky);
+  return !w.special && w.segments.some((s) => s.lucky);
+}
+
+const REPS_FIELD: Reparto[] = ["por", "dif", "cen", "att"];
+
+/** Effetti immediati del tratto sulla bozza del club. Ritorna la nota da mostrare. */
+function applyTrait(d: Draft, t: string, rng: Rng): string | undefined {
+  (d.traits ??= []).push(t);
+  const add = (r: Reparto, v: number) => { d.repMods[r] = (d.repMods[r] ?? 0) + v; };
+  switch (t) {
+    case "pres_tifoso": case "bach_80": case "curva_coreo": d.campoBonus = (d.campoBonus ?? 0) + 1; return "+1 fattore campo";
+    case "paese_stadio": d.campoBonus = (d.campoBonus ?? 0) + 2; return "+2 fattore campo";
+    case "salv_popolare": d.campoMin = 3; return "La tifoseria sarà almeno calda";
+    case "salv_svende": { const r = rng.pick(REPS_FIELD); add(r, -3); d.luckyOps.push({ kind: "budget", delta: 40 }); return `+40 M€, ma ${REPARTO_LABEL[r]} −3`; }
+    case "salv_last": d.luckyOps.push({ kind: "budget", delta: 25 }); return "+25 M€";
+    case "salv_penal": d.moraleBonus += 10; return "−3 punti in classifica, ma morale +10";
+    case "bach_trofei": d.moraleBonus += 5; return "Morale +5, ma le sconfitte pesano di più";
+    case "bach_coppa": add("all", 2); return "Allenatore +2";
+    case "paese_dopo": add("pan", -5); d.moraleBonus += 5; return "Panchina −5, morale +5";
+    case "paese_sindaco": d.luckyOps.push({ kind: "budget", delta: 10 }); return "+10 M€";
+    case "paese_parroco": add("all", -3); d.moraleBonus += 10; return "Morale +10, allenatore −3";
+    case "curva_gemellata": d.moraleBonus += 5; return "Morale +5";
+    case "panch_miracolo": add("all", 8); return "Allenatore +8";
+    case "panch_disastro": add("all", -5); return "Allenatore −5";
+    case "panch_vice": add("all", 10); return "Allenatore +10";
+    case "camp_bizzoso": d.fuoriExtra = (d.fuoriExtra ?? 0) + 1; return "Fuoriclasse +1";
+    case "camp_fragile": d.fuoriExtra = (d.fuoriExtra ?? 0) + 2; return "Fuoriclasse +2";
+    case "camp_eterno": d.noDecay = true; d.moraleBonus += 3; return "Non cala mai, morale +3";
+  }
+  return undefined;
 }
 
 /** Esegue il prossimo spin della coda. Muta lo stato e ritorna il record. */
@@ -194,27 +257,32 @@ export function doSpin(state: CreationState, rng: Rng): { record: SpinRecord; wh
   const seg = wheel.segments[index];
   const d = state.draft;
   let note: string | undefined;
+  const unlock: string[] = [];
 
   switch (wheelId) {
     case "citta":
       d.city = seg.label;
       d.region = seg.data;
-      if (!seg.data) { d.moraleBonus += 10; note = "Il pubblico del paese vi adora: +10 morale"; }
+      if (!seg.data) { d.moraleBonus += 10; note = "Il pubblico del paese vi adora: +10 morale"; unlock.push("sp_paese"); }
+      else unlock.push("sp_rivale");
       break;
     case "blasone":
       d.blasone = seg.label;
       d.base = seg.data;
+      if (seg.label === "Big storica") unlock.push("sp_bacheca");
       break;
     case "stile": {
       const [style, mod] = seg.data as [CoachStyle, Modulo | "tutti"];
       d.coachStyle = style;
       d.coachLabel = seg.label;
       d.preferredModule = mod;
-      if (style === "bandiera") { d.repMods.all = (d.repMods.all ?? 0) - 10; d.moraleBonus += 20; note = "Allenatore −10, ma morale +20"; }
+      if (style === "bandiera") { d.repMods.all = (d.repMods.all ?? 0) - 10; d.moraleBonus += 20; note = "Allenatore −10, ma morale +20"; unlock.push("sp_panchina"); }
       break;
     }
     case "budget":
       d.budget = seg.data;
+      if (seg.data >= 120) unlock.push("sp_presidente");
+      if (seg.data <= 5) unlock.push("sp_salvataggio");
       break;
     case "stadio":
       d.stadium = { label: seg.label, incasso: seg.data, idx: index };
@@ -227,6 +295,7 @@ export function doSpin(state: CreationState, rng: Rng): { record: SpinRecord; wh
       }
       d.fans = { label, campo, ultras: label === "Ultras" };
       d.moraleBonus += morale;
+      if (label === "Ultras") unlock.push("sp_curva");
       break;
     }
     case "fuoriclasse":
@@ -235,6 +304,8 @@ export function doSpin(state: CreationState, rng: Rng): { record: SpinRecord; wh
       break;
     case "ruolo":
       d.fuoriRuolo = seg.data;
+      if ((d.fuoriLevel ?? 0) >= 3) unlock.push("sp_campione");
+      unlock.push("sp_marchio");
       break;
     case "sponsor":
       d.sponsor = seg.label.replace("Sponsor imbarazzante: ", "");
@@ -265,11 +336,15 @@ export function doSpin(state: CreationState, rng: Rng): { record: SpinRecord; wh
       break;
     }
     default:
+      if (wheel.special) { note = applyTrait(d, seg.data as string, rng); break; }
       if (wheelId.startsWith("rep_")) {
         const rep = wheelId.slice(4) as Reparto;
         d.repMods[rep] = (d.repMods[rep] ?? 0) + seg.data;
+        if (rep === "att" && seg.data >= 6) unlock.push("sp_attacco");
       }
   }
+  // le ruote speciali si girano subito dopo quella che le ha sbloccate
+  if (unlock.length) state.queue.unshift(...unlock);
 
   // Lucky streak
   let combo = false;

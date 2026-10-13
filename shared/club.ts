@@ -70,7 +70,7 @@ export function computeRatings(d: Draft): { ratings: Ratings; fuoriLevel: number
     if (op.kind === "stadio") stadiumUpgrade = true;
     if (op.kind === "budget") budgetBonus += op.delta;
   }
-  if (fuoriLevel > 0 && d.fuoriRuolo) r[d.fuoriRuolo] += FUORI_BONUS[fuoriLevel];
+  if (fuoriLevel > 0 && d.fuoriRuolo) r[d.fuoriRuolo] += FUORI_BONUS[fuoriLevel] + (d.fuoriExtra ?? 0);
   for (const op of d.luckyOps) {
     if (op.kind === "add") r[op.rep] += op.delta;
     if (op.kind === "set") r[op.rep] = Math.max(r[op.rep], op.value);
@@ -85,7 +85,7 @@ export function computeClub(d: Draft, id: Identity, seed: string): Club {
   const fuoriRuolo: Reparto = d.fuoriRuolo ?? "att";
   if (fuoriLevel > 0 && !d.fuoriRuolo) ratings.att = clamp(ratings.att + FUORI_BONUS[fuoriLevel], 40, 99);
   const fuoriclasse = fuoriLevel > 0
-    ? { name: id.fuoriclasseName || "Il Fenomeno", ruolo: fuoriRuolo, level: fuoriLevel, levelLabel: FUORI_LABEL[fuoriLevel], bonus: FUORI_BONUS[fuoriLevel], decays: fuoriLevel === 4 }
+    ? { name: id.fuoriclasseName || "Il Fenomeno", ruolo: fuoriRuolo, level: fuoriLevel, levelLabel: FUORI_LABEL[fuoriLevel], bonus: FUORI_BONUS[fuoriLevel] + (d.fuoriRuolo ? d.fuoriExtra ?? 0 : 0), decays: fuoriLevel === 4 && !d.noDecay }
     : null;
   const stadium = stadiumUpgrade ? { label: "Stadio da 80.000", incasso: 8 } : { label: d.stadium?.label ?? "Comunale da 8.000", incasso: d.stadium?.incasso ?? 0.8 };
   const v = voto(ratings);
@@ -102,7 +102,7 @@ export function computeClub(d: Draft, id: Identity, seed: string): Club {
     coachName: coachNameFor(d.coachStyle ?? "giochista", seed),
     preferredModule: d.preferredModule ?? "4-3-3",
     stadium,
-    fans: d.fans ?? { label: "Normale", campo: 2, ultras: false },
+    fans: fansWithTraits(d),
     fuoriclasse,
     sponsor: d.sponsor ?? "",
     roster: generateRoster(seed, fuoriclasse?.name, fuoriclasse?.ruolo),
@@ -111,7 +111,15 @@ export function computeClub(d: Draft, id: Identity, seed: string): Club {
     voto: v,
     classe: classe(v),
     notes: d.notes,
+    traits: d.traits ?? [],
   };
+}
+
+function fansWithTraits(d: Draft): Club["fans"] {
+  const f = { ...(d.fans ?? { label: "Normale", campo: 2, ultras: false }) };
+  if (d.campoMin && f.campo < d.campoMin) { f.campo = d.campoMin; f.label = "Calda"; }
+  if (d.campoBonus) f.campo += d.campoBonus;
+  return f;
 }
 
 export function initialState(c: Club): ClubState {

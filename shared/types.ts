@@ -70,6 +70,12 @@ export type Draft = {
   sponsor?: string;
   luckyOps: LuckyOp[];
   notes: string[];
+  /** Tratti dalle ruote speciali (vedi shared/traits.ts). */
+  traits?: string[];
+  campoBonus?: number;
+  campoMin?: number;
+  fuoriExtra?: number;
+  noDecay?: boolean;
 };
 
 export type SpinRecord = { wheel: string; index: number; label: string; lucky: boolean; note?: string };
@@ -108,6 +114,7 @@ export type Club = {
   sponsor: string;
   roster: RosterPlayer[];
   initialMorale: number;
+  traits?: string[];
   initialBudget: number;
   voto: number;
   classe: string;
@@ -127,6 +134,8 @@ export type ClubState = {
   campoSqualificato: boolean;
   pendingDecision: "fuoriclasse" | null;
   marketOps: number;
+  /** Club rivale (dalle ruote speciali). */
+  rivalId?: string | null;
   marketDelta: Partial<Record<Reparto, number>>;
   lastResults: ("V" | "N" | "P")[];
   // gestione (opzionali per compatibilità con i club già creati)
