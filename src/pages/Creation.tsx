@@ -4,11 +4,18 @@ import { WHEELS } from "../../shared/wheels";
 import { WheelCanvas, type SpinTarget } from "../components/WheelCanvas";
 import { Confetti } from "../components/Confetti";
 import { MuteButton } from "../components/MuteButton";
+import { AppBar } from "../components/AppBar";
 import { ding, unlockAudio } from "../feedback";
 import type { SpinRecord } from "../../shared/types";
 
 type Props = { token: string; creation: { done: SpinRecord[]; next: string | null; remaining: number; streak: number; luckyCount: number }; onFinished: () => void };
 type SpinRes = { record: SpinRecord; combo: boolean; next: string | null; remaining: number; status: string; streak: number };
+
+function resultLabel(wheelId: string, r: SpinRecord) {
+  const seg = WHEELS[wheelId]?.segments[r.index];
+  if (wheelId.startsWith("rep_") && typeof seg?.data === "number") return `${r.label} ${seg.data > 0 ? "+" : seg.data < 0 ? "−" : "±"}${Math.abs(seg.data)}`;
+  return r.label;
+}
 
 export function Creation({ token, creation, onFinished }: Props) {
   const [wheelId, setWheelId] = useState<string>(creation.next ?? "citta");
@@ -52,15 +59,10 @@ export function Creation({ token, creation, onFinished }: Props) {
 
   return (
     <div className="stage">
-      <div className="stage-bar">
-        <span className="stage-count">{Math.min(done.length + 1, total)}/{total}</span>
-        <span className="stage-title">Crea il tuo club</span>
-        <MuteButton />
-      </div>
-      <div className="progress" aria-hidden><div style={{ width: `${(100 * done.length) / Math.max(1, total)}%` }} /></div>
+      <AppBar title="Crea il tuo club" left={<span className="stage-count">{Math.min(done.length + 1, total)}/{total}</span>} right={<MuteButton />} progress={done.length / Math.max(1, total)} />
 
       <div className={`question ${gold ? "gold" : ""}`}>
-        <span className="q-emoji" aria-hidden>{wheel.emoji}</span>
+        <span className="q-badge" aria-hidden>{wheel.emoji}</span>
         <div>
           <div className="q-title">{wheel.title}</div>
           <div className="q-text">{wheel.question ?? wheel.subtitle}</div>
@@ -73,7 +75,7 @@ export function Creation({ token, creation, onFinished }: Props) {
 
       <div className="result" aria-live="polite">{phase === "revealed" && res ? res.record.label : phase === "spinning" ? "…" : " "}</div>
       <div className="note-row">
-        {phase === "revealed" && res?.record.lucky && <span className="badge-lucky">★ Spin fortunato</span>}
+        {phase === "revealed" && res?.record.lucky && <span className="ribbon">★ SPIN FORTUNATO</span>}
         {phase === "revealed" && res?.record.note && <span className="note">{res.record.note}</span>}
       </div>
 

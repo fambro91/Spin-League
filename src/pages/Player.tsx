@@ -1,27 +1,30 @@
+import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { api, fmtDate, store } from "../api";
 import { Creation } from "./Creation";
 import { Identity } from "./Identity";
 import { Serata, seenKey } from "./Serata";
-import { Bar, Crest, Form, Radar } from "../components/ClubBits";
+import { Bar, Crest, Form, Radar, ScoreHead } from "../components/ClubBits";
 import { Replay } from "../components/Replay";
 import { Logo } from "../components/Logo";
+import { AppBar } from "../components/AppBar";
+import { IcBall, IcBell, IcBoard, IcCalendar, IcChat, IcCompass, IcNews, IcRotate, IcShield, IcGear, IcStar, IcTrophy, IcWarn } from "../components/Icons";
 import { MODULI, REPARTI, REPARTO_LABEL, type Reparto } from "../../shared/types";
 import { marketCost, marketIncome } from "../../shared/league";
 
 type Tab = "oggi" | "squadra" | "classifica" | "risultati" | "notizie";
-const TABS: { id: Tab; label: string; ico: string }[] = [
-  { id: "oggi", label: "Oggi", ico: "⚽" },
-  { id: "squadra", label: "Squadra", ico: "🛡️" },
-  { id: "classifica", label: "Classifica", ico: "🏆" },
-  { id: "risultati", label: "Risultati", ico: "📅" },
-  { id: "notizie", label: "Notizie", ico: "📰" },
+const TABS: { id: Tab; label: string; ico: React.ReactNode }[] = [
+  { id: "oggi", label: "Oggi", ico: <IcBall /> },
+  { id: "squadra", label: "Squadra", ico: <IcShield /> },
+  { id: "classifica", label: "Classifica", ico: <IcTrophy /> },
+  { id: "risultati", label: "Risultati", ico: <IcCalendar /> },
+  { id: "notizie", label: "Notizie", ico: <IcNews /> },
 ];
 
 type Ctx = {
   d: any; token: string; reload: () => Promise<void>; clubsById: Map<string, any>;
   openClub: (id: string) => void; openMatch: (id: string) => void; openSerata: (md: number) => void;
-  openTactics: () => void; openMarket: () => void;
+  openTactics: () => void; openMarket: () => void; goTab: (t: Tab) => void;
 };
 
 export function Player({ token }: { token: string }) {
@@ -51,15 +54,16 @@ export function Player({ token }: { token: string }) {
   const adminToken = store.get(`spin:admin:${d.league.id}`);
   const ctx: Ctx = {
     d, token, reload: load, clubsById, openClub: setClubModal, openMatch: setMatchModal, openSerata: setSerata,
-    openTactics: () => setSheet("tactics"), openMarket: () => setSheet("market"),
+    openTactics: () => setSheet("tactics"), openMarket: () => setSheet("market"), goTab: setTab,
   };
 
   return (
     <>
       <div className="wrap">
-        <div className="app-head">
+        <div className="head-center">
+          {adminToken ? <a className="icon-btn plain" aria-label="Gestisci campionato" href={`#/admin/${adminToken}`} style={{ color: "var(--chalk)" }}><IcGear /></a> : <span />}
           <div className="brand"><Logo size={34} wordmark={false} />Spin League</div>
-          {adminToken && <a className="btn ghost small" href={`#/admin/${adminToken}`}>Gestisci</a>}
+          <button className="icon-btn plain" aria-label="Notizie" onClick={() => setTab("notizie")}><IcBell /></button>
         </div>
         <div className="small muted" style={{ margin: "2px 0 4px" }}>{d.league.name} · stagione {d.league.season} · {d.player.name}</div>
         {err && <div className="error">{err}</div>}
@@ -85,6 +89,7 @@ export function Player({ token }: { token: string }) {
 
 /* ---------------- OGGI ---------------- */
 
+
 function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTactics, openMarket, openMatch }: Ctx) {
   const L = d.league, mine = d.mine;
   const myId = mine?.id;
@@ -95,7 +100,7 @@ function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTacti
     const ready = humans.filter((p: any) => p.status === "ready").length;
     return (
       <>
-        <div className="today-head"><div className="big">In attesa del calcio d'inizio</div></div>
+        <div className="today-head"><div className="big">In attesa del fischio d'inizio</div></div>
         <div className="panel">
           <ul className="checklist">
             <li><span className="ck">✅</span><span>Il tuo club è pronto: {mine?.club?.name}</span></li>
@@ -123,9 +128,11 @@ function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTacti
 
       {unseen && (
         <div className="panel cta-card">
-          <h2>La serata della giornata {unseen}</h2>
-          <p>Gli highlights della tua partita, gli altri risultati, le ruote degli eventi e la classifica aggiornata.</p>
-          <button className="btn block pulse" onClick={() => openSerata(unseen)}>Guarda la serata</button>
+          <div className="serata-card">
+            <div className="serata-ico" aria-hidden>🎬</div>
+            <div><h3 style={{ margin: 0 }}>La serata della giornata {unseen}</h3><p className="small muted" style={{ margin: "2px 0 0" }}>Risultati, highlights ed eventi sono pronti.</p></div>
+          </div>
+          <button className="btn block pulse" style={{ marginTop: 12 }} onClick={() => openSerata(unseen)}>Guarda la serata</button>
         </div>
       )}
 
@@ -134,17 +141,17 @@ function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTacti
       {next && mine && (
         <div className={`panel ${!confirmed && !unseen ? "cta-card" : ""}`}>
           <div className="row spread">
-            <h2 style={{ margin: 0 }}>La tua partita</h2>
+            <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: 8 }}><IcBall size={20} />La tua partita</h3>
             <span className={`chip ${confirmed ? "done" : "todo"}`}>{confirmed ? "Formazione pronta" : "Formazione da fare"}</span>
           </div>
+          <div className="match-meta">{L.nextMatchday}ª giornata · {fmtDate(L.nextMatchDate)} · 21:00 · {next.homeId === myId ? "in casa" : "in trasferta"}</div>
           <Versus m={next} clubsById={clubsById} onOpen={openClub} />
-          <p className="small muted" style={{ textAlign: "center" }}>{next.homeId === myId ? "In casa" : "In trasferta"} · {fmtDate(L.nextMatchDate)}, ore 21:00 · tocca lo stemma avversario per la sua scheda</p>
-          <div className="stack" style={{ margin: "10px 0 14px" }}>
+          <div className="stack" style={{ margin: "4px 0 14px" }}>
             <div><div className="row spread small"><span>Condizione</span><span>{st.cond}</span></div><Bar value={st.cond} color={st.cond < 60 ? "#e0343f" : "#7ee08a"} /></div>
             <div><div className="row spread small"><span>Morale</span><span>{st.morale}</span></div><Bar value={st.morale} color="#8fd3ff" /></div>
           </div>
-          {st.modifiers?.length > 0 && <p className="warn">⚠️ {st.modifiers.map((m: any) => `${m.label} (${REPARTO_LABEL[m.rep as Reparto]} ${m.delta})`).join(" · ")}</p>}
-          {st.campoSqualificato && <p className="warn">⚠️ Campo squalificato: niente fattore campo nella prossima in casa</p>}
+          {st.modifiers?.length > 0 && <p className="warn"><IcWarn size={16} /> {st.modifiers.map((m: any) => `${m.label} (${REPARTO_LABEL[m.rep as Reparto]} ${m.delta})`).join(" · ")}</p>}
+          {st.campoSqualificato && <p className="warn"><IcWarn size={16} /> Campo squalificato: niente fattore campo nella prossima in casa</p>}
           <button className={`btn block ${confirmed ? "ghost" : unseen ? "" : "pulse"}`} onClick={openTactics}>{confirmed ? "Modifica la formazione" : "Prepara la formazione"}</button>
           {!confirmed && <p className="small muted" style={{ marginTop: 8 }}>Hai tempo fino alle 21:00. Se non scegli, giochi con le scelte dell'ultima volta.</p>}
         </div>
@@ -199,12 +206,14 @@ function DecisionCard({ d, token, reload }: { d: any; token: string; reload: () 
   };
   return (
     <div className="panel cta-card">
-      <h2>{d.mine.club.fuoriclasse?.name} vuole andare via</h2>
-      <p>Vendilo per 60 M€ e perdi il suo bonus, oppure tienilo e il morale scende di 10. Se non decidi entro le 21:00, resta.</p>
+      <div className="serata-card">
+        <div className="serata-ico" aria-hidden>✈️</div>
+        <div><h3 style={{ margin: 0 }}>Il tuo fuoriclasse vuole andare via</h3><p className="small muted" style={{ margin: "2px 0 0" }}>{d.mine.club.fuoriclasse?.name} · vendi per 60 M€ (perdi il bonus) o tienilo (morale −10). Se non decidi entro le 21:00, resta.</p></div>
+      </div>
       {err && <div className="error">{err}</div>}
-      <div className="row">
-        <button className="btn small" disabled={busy} onClick={() => act(true)}>Vendilo</button>
-        <button className="btn ghost small" disabled={busy} onClick={() => act(false)}>Tienilo</button>
+      <div className="row" style={{ marginTop: 12 }}>
+        <button className="btn red grow" disabled={busy} onClick={() => act(true)}>Vendi</button>
+        <button className="btn ghost grow" disabled={busy} onClick={() => act(false)}>Tieni</button>
       </div>
     </div>
   );
@@ -250,34 +259,37 @@ function TacticsSheet({ d, token, onClose }: { d: any; token: string; onClose: (
     try { await api(`me/${token}/choices`, { body: c }); onClose(true); } catch (e: any) { setErr(e.message); setBusy(false); }
   };
   const modItems = MODULI.map((m) => ({ id: m, label: m + (pref === m ? " ★" : ""), info: MOD_INFO[m] }));
-  const cats: { id: Cat; ico: string; title: string; sub: string; items: { id: string; label: string; info: string }[]; help?: string }[] = [
-    { id: "modulo", ico: "📐", title: "Modulo", sub: "Come si dispone la squadra", items: modItems, help: pref === "tutti" ? "Il tuo allenatore rende bene con qualsiasi modulo." : `Il modulo preferito (★ ${pref}) dà +2 ad Attacco, Centrocampo e Difesa.` },
-    { id: "atteggiamento", ico: "🧭", title: "Atteggiamento", sub: "Come affrontare la partita", items: ATT_INFO },
-    { id: "turnover", ico: "🔄", title: "Turnover", sub: "Gestisci le energie", items: TURN_INFO, help: st.cond < 60 ? "Squadra stanca: conviene far riposare qualcuno." : "Ogni partita costa 10 di condizione, ne recuperi 6 al giorno." },
-    { id: "discorso", ico: "💬", title: "Discorso", sub: "Influenza il morale", items: TALK_INFO },
+  const cats: { id: Cat; ico: React.ReactNode; title: string; sub: string; items: { id: string; label: string; info: string }[]; help?: string }[] = [
+    { id: "modulo", ico: <IcBoard size={34} />, title: "Modulo", sub: "Come si dispone la squadra", items: modItems, help: pref === "tutti" ? "Il tuo allenatore rende bene con qualsiasi modulo." : `Il modulo preferito (★ ${pref}) dà +2 ad Attacco, Centrocampo e Difesa.` },
+    { id: "atteggiamento", ico: <IcCompass size={34} />, title: "Atteggiamento", sub: "Come affrontare la partita", items: ATT_INFO },
+    { id: "turnover", ico: <IcRotate size={34} />, title: "Turnover", sub: "Gestisci le energie", items: TURN_INFO, help: st.cond < 60 ? "Squadra stanca: conviene far riposare qualcuno." : "Ogni partita costa 10 di condizione, ne recuperi 6 al giorno." },
+    { id: "discorso", ico: <IcChat size={34} />, title: "Discorso", sub: "Influenza il morale", items: TALK_INFO },
   ];
   const labelOf = (cat: Cat) => cats.find((x) => x.id === cat)!.items.find((i) => i.id === c[cat])?.label ?? c[cat];
   const cur = open ? cats.find((x) => x.id === open)! : null;
   return (
     <div className="modal" role="dialog" aria-label="Prepara la formazione">
       <div className="wrap" style={{ paddingBottom: 0 }}>
-        <div className="row spread">
-          <h2 style={{ margin: "8px 0" }}>{cur ? cur.title : "Prepara la formazione"}</h2>
-          {cur ? <button className="btn ghost small" onClick={() => setOpen(null)}>Indietro</button> : <button className="btn ghost small" onClick={() => onClose(false)}>Chiudi</button>}
-        </div>
+        {cur
+          ? <AppBar title={cur.title} onBack={() => setOpen(null)} />
+          : <AppBar title="Prepara la formazione" onClose={() => onClose(false)} left={<span className="stage-count">{seen.size}/4</span>} progress={seen.size / 4} />}
         {!cur && (
           <>
-            <div className="progress" style={{ maxWidth: "none", margin: "4px 0 6px" }}><div style={{ width: `${(seen.size / 4) * 100}%` }} /></div>
-            <p className="small muted">{seen.size}/4 controllate · condizione {st.cond} · morale {st.morale} · {club.coachName ?? "allenatore"} ({club.coachLabel})</p>
+            <p className="small muted" style={{ textAlign: "center" }}>Condizione {st.cond} · morale {st.morale} · {club.coachName ?? "allenatore"} ({club.coachLabel})</p>
             <div className="cat-grid">
               {cats.map((x) => (
                 <button key={x.id} className={`cat ${seen.has(x.id) ? "done" : ""}`} onClick={() => { setOpen(x.id); setSeen(new Set([...seen, x.id])); }}>
-                  <span className="ico" aria-hidden>{x.ico}</span>
+                  <span className="ico-wrap" aria-hidden>{x.ico}</span>
                   <strong>{x.title}</strong>
                   <span className="small muted">{x.sub}</span>
                   <span className="val">{labelOf(x.id)}</span>
                 </button>
               ))}
+            </div>
+            <div className="summary">
+              <IcBoard size={30} />
+              <div className="grow"><div className="small muted">Modulo</div><div className="big">{c.modulo}</div></div>
+              {(pref === c.modulo || pref === "tutti") && <span style={{ color: "var(--amber)" }} aria-label="Modulo preferito"><IcStar size={26} /></span>}
             </div>
             {err && <div className="error" style={{ marginTop: 12 }}>{err}</div>}
             <div className="sheet-foot"><button className="btn block pulse" disabled={busy} onClick={save}>{busy ? "Salvo…" : "Conferma la formazione"}</button></div>
@@ -316,7 +328,7 @@ function MarketSheet({ d, token, reload, onClose }: { d: any; token: string; rel
   return (
     <div className="modal" role="dialog" aria-label="Mercato">
       <div className="wrap">
-        <div className="row spread"><h2 style={{ margin: "8px 0" }}>Mercato</h2><button className="btn ghost small" onClick={onClose}>Chiudi</button></div>
+        <AppBar title="Mercato" onBack={onClose} />
         <p>Budget <strong>{st.budget} M€</strong> · operazioni usate {st.marketOps} su 2 · ogni reparto può salire al massimo di 4.</p>
         {err && <div className="error">{err}</div>}
         {msg && <div className="ok">{msg}</div>}
@@ -368,42 +380,93 @@ function MarketSheet({ d, token, reload, onClose }: { d: any; token: string; rel
 
 function ClubCard({ c, state }: { c: any; state?: any }) {
   const ratings = state?.ratings ?? c.ratings;
+  const rows: [string, string][] = [
+    ["Allenatore", c.coachName ? `${c.coachName} (${c.coachLabel})` : c.coachLabel],
+    ["Modulo preferito", c.preferredModule === "tutti" ? "Tutti" : c.preferredModule],
+    ["Stadio", typeof c.stadium === "string" ? c.stadium : c.stadium.label],
+    ["Tifoseria", typeof c.fans === "string" ? c.fans : c.fans.label],
+    ["Fuoriclasse", c.fuoriclasse ? `${c.fuoriclasse.name} ★ (${REPARTO_LABEL[c.fuoriclasse.ruolo as Reparto]} +${c.fuoriclasse.bonus})` : "Nessuno"],
+    ["Sponsor", c.sponsor || "—"],
+  ];
+  if (state) rows.push(["Budget", `${state.budget} M€`]);
   return (
-    <div className="panel card-club">
-      <Crest name={c.name} colors={c.colors} shape={c.crest} size={84} />
-      <div className="club-name">{c.name}</div>
-      <div className="muted">{c.city} · {c.blasone} · presidente {c.owner ?? "tu"}</div>
-      <Radar ratings={ratings} compare={state ? c.ratings : c.initialRatings} />
-      <div className="voto"><span className="num">{c.voto}</span><span className="classe">{c.classe}</span></div>
-      <dl className="facts">
-        <div><dt>Allenatore</dt><dd>{c.coachName ? `${c.coachName} (${c.coachLabel})` : c.coachLabel}</dd></div>
-        <div><dt>Modulo preferito</dt><dd>{c.preferredModule === "tutti" ? "Tutti" : c.preferredModule}</dd></div>
-        <div><dt>Stadio</dt><dd>{typeof c.stadium === "string" ? c.stadium : c.stadium.label}</dd></div>
-        <div><dt>Tifoseria</dt><dd>{typeof c.fans === "string" ? c.fans : c.fans.label}</dd></div>
-        <div><dt>Fuoriclasse</dt><dd>{c.fuoriclasse ? `${c.fuoriclasse.name} (${c.fuoriclasse.levelLabel}, +${c.fuoriclasse.bonus} ${REPARTO_LABEL[c.fuoriclasse.ruolo as Reparto]})` : "Nessuno"}</dd></div>
-        <div><dt>Sponsor</dt><dd>{c.sponsor || "—"}</dd></div>
-        {state && <div><dt>Budget</dt><dd>{state.budget} M€</dd></div>}
-        {state && <div><dt>Condizione · morale</dt><dd>{state.cond} · {state.morale}</dd></div>}
-      </dl>
-      <p className="small muted" style={{ marginTop: 10 }}>Il profilo tratteggiato mostra i valori di partenza.</p>
+    <div className="panel">
+      <div className="club-top">
+        <div className="who">
+          <Crest name={c.name} colors={c.colors} shape={c.crest} size={72} />
+          <div className="cname">{c.name}</div>
+          <div className="small muted">{c.city}</div>
+          <div className="small muted">Blasone: {c.blasone}</div>
+          {c.owner && <div className="small muted">Presidente: {c.owner}</div>}
+        </div>
+        <Radar ratings={ratings} compare={state ? c.ratings : c.initialRatings} size={190} />
+      </div>
+      <div className="kpis">
+        <div className="kpi"><div className="lab">Voto squadra</div><div className="num">{c.voto}</div></div>
+        <div className="kpi"><div className="lab">Classe</div><div className="num amber">{c.classe}</div></div>
+      </div>
+      <div className="rows">{rows.map(([k, v]) => <div className="r" key={k}><span>{k}</span><span>{v}</span></div>)}</div>
+      {state && (
+        <div className="kpis" style={{ marginTop: 12 }}>
+          <div><div className="row spread small"><span>Condizione</span><span>{state.cond}%</span></div><Bar value={state.cond} color={state.cond < 60 ? "#e0343f" : "#7ee08a"} /></div>
+          <div><div className="row spread small"><span>Morale</span><span>{state.morale}%</span></div><Bar value={state.morale} color="#8fd3ff" /></div>
+        </div>
+      )}
+      <p className="small muted" style={{ marginTop: 10 }}>Nel radar, il profilo tratteggiato mostra i valori di partenza.</p>
     </div>
   );
 }
 
 function ClubTab({ d }: Ctx) {
+  const [tab, setTab] = useState<"rosa" | "stat">("rosa");
   const mine = d.mine;
   if (!mine?.club) return null;
+  const myId = mine.id;
+  const played = d.matches.filter((m: any) => m.played && (m.homeId === myId || m.awayId === myId));
+  let v = 0, n = 0, p = 0, gf = 0, gs = 0;
+  for (const m of played) {
+    const f = m.homeId === myId ? m.hg : m.ag, a = m.homeId === myId ? m.ag : m.hg;
+    gf += f; gs += a; if (f > a) v++; else if (f === a) n++; else p++;
+  }
+  const order: Record<string, number> = { POR: 0, DIF: 1, CEN: 2, ATT: 3 };
+  const roster = [...mine.club.roster].sort((x: any, y: any) => order[x.ruolo] - order[y.ruolo]);
+  const goalsOf = new Map<string, number>((d.myScorers ?? []).map((s: any) => [s.name, s.goals]));
   return (
     <>
+      <AppBar title="Il tuo club" />
       <ClubCard c={{ ...mine.club, owner: d.player.name }} state={mine.state} />
       <div className="panel">
-        <h3>Rosa</h3>
-        <p className="small muted">I nomi servono per marcatori e cronaca; la forza è quella dei reparti.</p>
-        <div className="small" style={{ columns: 2 }}>
-          {mine.club.roster.map((p: any) => <div key={p.name}><span className="muted">{p.ruolo}</span> {p.name}{mine.club.fuoriclasse?.name === p.name ? " ⭐" : ""}</div>)}
+        <div className="tabs" role="tablist">
+          <button role="tab" aria-selected={tab === "rosa"} onClick={() => setTab("rosa")}>Rosa ({roster.length})</button>
+          <button role="tab" aria-selected={tab === "stat"} onClick={() => setTab("stat")}>Statistiche</button>
         </div>
+        {tab === "rosa" ? (
+          <>
+            {roster.map((pl: any, i: number) => (
+              <div className="roster-row" key={pl.name}>
+                <span className="muted">{i + 1}.</span>
+                <span>{pl.name}{mine.club.fuoriclasse?.name === pl.name ? <span style={{ color: "var(--amber)" }}> ★</span> : null}{goalsOf.get(pl.name) ? <span className="small muted"> · {goalsOf.get(pl.name)} gol</span> : null}</span>
+                <span className="small muted">{pl.ruolo}</span>
+              </div>
+            ))}
+            <p className="small muted" style={{ marginTop: 8 }}>La forza è quella dei reparti: i nomi servono per marcatori e cronaca.</p>
+          </>
+        ) : (
+          <>
+            <div className="rows">
+              <div className="r"><span>Partite giocate</span><span>{played.length}</span></div>
+              <div className="r"><span>Vittorie · pareggi · sconfitte</span><span>{v} · {n} · {p}</span></div>
+              <div className="r"><span>Gol fatti · subiti</span><span>{gf} · {gs}</span></div>
+              <div className="r"><span>Ultime partite</span><span><Form form={mine.state.lastResults ?? []} /></span></div>
+            </div>
+            <h3 style={{ marginTop: 14 }}>Marcatori</h3>
+            {(d.myScorers ?? []).length === 0 ? <p className="small muted">Ancora nessun gol.</p> : (d.myScorers as any[]).slice(0, 8).map((s, i) => (
+              <div className="roster-row" key={s.name}><span className="muted">{i + 1}.</span><span>{s.name}</span><strong>{s.goals}</strong></div>
+            ))}
+          </>
+        )}
       </div>
-      {mine.club.notes?.length > 0 && <div className="panel"><h3>Dalla creazione</h3>{mine.club.notes.map((n: string, i: number) => <p key={i} className="small">{n}</p>)}</div>}
+      {mine.club.notes?.length > 0 && <div className="panel"><h3>Dalla creazione</h3>{mine.club.notes.map((x: string, i: number) => <p key={i} className="small">{x}</p>)}</div>}
     </>
   );
 }
@@ -523,8 +586,7 @@ function ClubModal({ club, onClose }: { club: any; onClose: () => void }) {
   return (
     <div className="modal" role="dialog" aria-label={club.name}>
       <div className="wrap">
-        <button className="btn ghost small" onClick={onClose}>Chiudi</button>
-        <div style={{ height: 10 }} />
+        <AppBar title="Scheda club" onBack={onClose} />
         <ClubCard c={club} />
       </div>
     </div>
@@ -540,21 +602,13 @@ function MatchModal({ token, id, clubsById, onClose }: { token: string; id: stri
   return (
     <div className="modal" role="dialog" aria-label="Highlights">
       <div className="wrap">
-        <button className="btn ghost small" onClick={onClose}>Chiudi</button>
+        <AppBar title="Highlights" onBack={onClose} />
         {err && <div className="error" style={{ marginTop: 10 }}>{err}</div>}
         {m && h && a && (
           <>
-            <div className="panel" style={{ marginTop: 10, textAlign: "center" }}>
-              <div className="small muted">Giornata {m.matchday}{m.data.derby ? " · derby" : ""}</div>
-              <div className="row" style={{ justifyContent: "center", gap: 14, margin: "6px 0" }}>
-                <Crest name={h.name} colors={h.colors} shape={h.crest} size={44} />
-                <span className="show-score">{m.hg} - {m.ag}</span>
-                <Crest name={a.name} colors={a.colors} shape={a.crest} size={44} />
-              </div>
-              <div className="small">{h.name} – {a.name}</div>
-              <div className="small muted">Gol attesi {String(m.data.xg[0]).replace(".", ",")} – {String(m.data.xg[1]).replace(".", ",")}</div>
-            </div>
-            <Replay highlights={m.data.highlights} home={h} away={a} seed={m.id} />
+            <div className="small muted" style={{ textAlign: "center" }}>Giornata {m.matchday}{m.data.derby ? " · derby" : ""} · gol attesi {String(m.data.xg[0]).replace(".", ",")} – {String(m.data.xg[1]).replace(".", ",")}</div>
+            <ScoreHead h={h} a={a} hg={m.hg} ag={m.ag} />
+            <Replay highlights={m.data.highlights} events={m.data.events} stats={m.data.stats} modules={[m.data.choices?.[0]?.modulo ?? "4-4-2", m.data.choices?.[1]?.modulo ?? "4-4-2"]} home={h} away={a} seed={m.id} />
             <div className="panel" style={{ marginTop: 14 }}>
               <h3>Tabellino</h3>
               {m.data.events.filter((e: any) => e.type === "gol" || e.type === "rosso").map((e: any, i: number) => (

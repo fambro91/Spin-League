@@ -4,7 +4,8 @@ import { DAILY_EVENTS } from "../../shared/league";
 import type { Wheel } from "../../shared/wheels";
 import { WheelCanvas, type SpinTarget } from "../components/WheelCanvas";
 import { Replay } from "../components/Replay";
-import { Crest } from "../components/ClubBits";
+import { Crest, ScoreHead } from "../components/ClubBits";
+import { AppBar } from "../components/AppBar";
 import { MuteButton } from "../components/MuteButton";
 import { ding, unlockAudio } from "../feedback";
 
@@ -22,6 +23,17 @@ type Step =
   | { kind: "chronicle" };
 
 export function seenKey(leagueId: string, season: number) { return `spin:seen:${leagueId}:${season}`; }
+
+function stepTitle(step: Step | undefined, md: number) {
+  switch (step?.kind) {
+    case "mine": return "La tua partita";
+    case "others": return "Gli altri campi";
+    case "event": return "Gli eventi della giornata";
+    case "table": return "Classifica";
+    case "chronicle": return "Prima pagina";
+    default: return `Giornata ${md}`;
+  }
+}
 
 export function Serata({ token, md, d, onClose }: { token: string; md: number; d: any; onClose: () => void }) {
   const [data, setData] = useState<any>(null);
@@ -55,9 +67,8 @@ export function Serata({ token, md, d, onClose }: { token: string; md: number; d
 
   return (
     <div className="modal show" role="dialog" aria-label={`Serata della giornata ${md}`}>
-      <div className="show-top">
-        <div className="dots" aria-hidden>{steps.map((_, k) => <i key={k} className={k <= i ? "on" : ""} />)}</div>
-        <div className="row"><MuteButton /><button className="btn ghost small" onClick={onClose}>Esci</button></div>
+      <div className="show-top" style={{ display: "block" }}>
+        <AppBar title={stepTitle(step, md)} left={<span className="stage-count">{steps.length ? `${i + 1}/${steps.length}` : ""}</span>} right={<MuteButton />} onClose={onClose} progress={steps.length ? (i + 1) / steps.length : 0} />
       </div>
       <div className="show-body">
         {err && <div className="error">{err}</div>}
@@ -102,14 +113,9 @@ function MineStep({ m, clubsById, myId }: { m: any; clubsById: Map<string, any>;
   const verdict = my > their ? "Vittoria" : my === their ? "Pareggio" : "Sconfitta";
   return (
     <div>
-      <div className="kicker">La tua partita · {verdict}</div>
-      <div className="row" style={{ justifyContent: "center", gap: 14, margin: "8px 0 4px" }}>
-        <Crest name={h.name} colors={h.colors} shape={h.crest} size={48} />
-        <span className="show-score">{m.hg} - {m.ag}</span>
-        <Crest name={a.name} colors={a.colors} shape={a.crest} size={48} />
-      </div>
-      <div className="small" style={{ textAlign: "center", marginBottom: 12 }}>{h.name} – {a.name}{m.data.derby ? " · derby" : ""}</div>
-      <Replay highlights={m.data.highlights} home={h} away={a} seed={m.id} />
+      <div className="kicker" style={{ textAlign: "center" }}>{verdict}{m.data.derby ? " · derby" : ""}</div>
+      <ScoreHead h={h} a={a} hg={m.hg} ag={m.ag} />
+      <Replay highlights={m.data.highlights} events={m.data.events} stats={m.data.stats} modules={[m.data.choices?.[0]?.modulo ?? "4-4-2", m.data.choices?.[1]?.modulo ?? "4-4-2"]} home={h} away={a} seed={m.id} />
     </div>
   );
 }
@@ -123,7 +129,7 @@ function OthersStep({ matches, clubsById, myId }: { matches: any[]; clubsById: M
       <div>
         <button className="btn ghost small" onClick={() => setOpen(null)}>Torna ai risultati</button>
         <div className="small" style={{ textAlign: "center", margin: "10px 0" }}>{h.name} {open.hg}-{open.ag} {a.name}</div>
-        <Replay highlights={open.data.highlights} home={h} away={a} seed={open.id} />
+        <Replay highlights={open.data.highlights} events={open.data.events} stats={open.data.stats} modules={[open.data.choices?.[0]?.modulo ?? "4-4-2", open.data.choices?.[1]?.modulo ?? "4-4-2"]} home={h} away={a} seed={open.id} />
       </div>
     );
   }
@@ -167,7 +173,7 @@ function EventStep({ n, total, ev, order, clubsById, myId }: { n: number; total:
   const go2 = () => { unlockAudio(); setPhase("spin2"); setT2({ index: clubIdx, key: Date.now() }); };
   return (
     <div className="stage-inline">
-      <div className="kicker">Gli eventi della giornata · {n + 1} di {total}</div>
+      <div className="kicker">Evento {n + 1} di {total}</div>
       <div className="pill">Ruota degli eventi</div>
       <div className="wheel-box" style={{ width: "min(76vw, 300px)", margin: "10px auto" }}>
         <WheelCanvas wheel={EVENT_WHEEL} target={t1} hub="🎡" onDone={() => { ding(); setPhase(needsClub ? "spun1" : "done"); }} />
@@ -190,7 +196,15 @@ function EventStep({ n, total, ev, order, clubsById, myId }: { n: number; total:
           {phase === "spin2" && <button className="btn" disabled>Gira…</button>}
         </>
       )}
-      {phase === "done" && needsClub && <div className={`event-text ${hitsMe ? "me" : ""}`}>{hitsMe ? "Tocca a te! " : ""}{ev.text}</div>}
+      {phase === "done" && needsClub && (() => {
+        const cl = clubsById.get(ev.clubId);
+        return (
+          <div className="colpisce" style={hitsMe ? { boxShadow: "0 0 18px rgba(255,179,26,.4)" } : undefined}>
+            {cl && <Crest name={cl.name} colors={cl.colors} shape={cl.crest} size={44} />}
+            <div><strong>Colpisce: {cl?.name}</strong>{hitsMe ? <span style={{ color: "var(--amber)" }}> · tocca a te!</span> : null}<div className="small muted">{ev.text}</div></div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

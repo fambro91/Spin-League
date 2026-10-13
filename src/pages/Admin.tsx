@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, copy, fmtDate, playerLink, store } from "../api";
 import { Logo } from "../components/Logo";
+import { AppBar } from "../components/AppBar";
+import { IcCopy, IcSend, IcShare, IcUsers } from "../components/Icons";
 
 export function Admin({ token }: { token: string }) {
   const [d, setD] = useState<any>(null);
@@ -52,12 +54,12 @@ export function Admin({ token }: { token: string }) {
         const lk = linkFor(p);
         return (
           <div key={p.id} className="player-row">
-            <div className="grow"><strong>{p.name}</strong>{p.id === me.id ? " (tu)" : ""}<div className="small muted"><span className={`status-dot ${s.dot}`} />{s.label}</div></div>
+            <div className="grow"><strong>{p.name}</strong>{p.id === me.id ? " (tu)" : ""}<div className="small muted"><span className={`status-dot sd-${s.dot}`} />{s.label}</div></div>
             <div className="row">
               {lk ? (
                 <>
-                  {p.id !== me.id && <button className="btn small" onClick={() => share(p)}>Invia link</button>}
-                  <button className="btn ghost small" onClick={async () => { const ok = await copy(playerLink(lk)); setMsg(ok ? `Link di ${p.name} copiato.` : playerLink(lk)); }}>Copia</button>
+                  {p.id !== me.id && <button className="btn small" onClick={() => share(p)}><IcShare size={16} className="ic" />Invia link</button>}
+                  <button className="btn ghost small" onClick={async () => { const ok = await copy(playerLink(lk)); setMsg(ok ? `Link di ${p.name} copiato.` : playerLink(lk)); }}><IcCopy size={16} className="ic" />Copia</button>
                 </>
               ) : (
                 <button className="btn ghost small" disabled={busy} onClick={() => act(async () => { const r = await api(`admin/${token}/players/${p.id}/link`, { method: "POST" }); saveLink(p.id, r.token); }, `Nuovo link per ${p.name}. Il vecchio non funziona più.`)}>Crea nuovo link</button>
@@ -85,9 +87,10 @@ export function Admin({ token }: { token: string }) {
       ) : d.tgCode ? (
         <>
           <p>Aggiungi {d.botName ? <strong>@{d.botName}</strong> : "il bot"} al gruppo degli amici e scrivi nel gruppo:</p>
-          <div className="row" style={{ marginBottom: 10 }}>
-            <p className="linkbox grow" style={{ fontSize: 20, margin: 0 }}>/collega {d.tgCode}</p>
-            <button className="btn ghost small" onClick={async () => { const ok = await copy(`/collega ${d.tgCode}`); setMsg(ok ? "Comando copiato: incollalo nel gruppo." : `/collega ${d.tgCode}`); }}>Copia</button>
+          <div className="code-box" style={{ marginBottom: 10 }}>
+            <IcSend size={20} />
+            <span className="grow">/collega {d.tgCode}</span>
+            <button className="icon-btn plain" aria-label="Copia il comando" onClick={async () => { const ok = await copy(`/collega ${d.tgCode}`); setMsg(ok ? "Comando copiato: incollalo nel gruppo." : `/collega ${d.tgCode}`); }}><IcCopy size={20} /></button>
           </div>
           <button className="btn ghost small" onClick={load}>Fatto, controlla</button>
         </>
@@ -102,10 +105,8 @@ export function Admin({ token }: { token: string }) {
 
   return (
     <div className="wrap">
-      <div className="app-head" style={{ marginTop: 8 }}>
-        <div className="brand"><Logo size={34} wordmark={false} />Organizzatore</div>
-        {myLink && <a className="btn small" href={`#/p/${myLink}`}>Il mio club</a>}
-      </div>
+      <AppBar title="Organizzatore" left={<Logo size={34} wordmark={false} />} right={<span />} />
+      {myLink && <a className="btn block" href={`#/p/${myLink}`} style={{ textAlign: "center", marginBottom: 10 }}>Vai al mio club</a>}
       <p className="small muted" style={{ margin: "4px 0 0" }}>Salva questa pagina nei preferiti: serve per gestire il campionato.</p>
       <h1 style={{ marginTop: 10 }}>{L.name}</h1>
       <p className="muted">Stagione {L.season} · {L.status === "setup" ? "preparazione" : L.status === "running" ? `giornata ${L.matchdayPlayed} di ${L.totalMatchdays} giocata` : "conclusa"}</p>
@@ -121,7 +122,7 @@ export function Admin({ token }: { token: string }) {
               <input type="text" className="grow" placeholder="Nome dell'amico" value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={24} />
               <button className="btn small" disabled={busy || !newName.trim()}>Aggiungi</button>
             </form>
-            <PlayerList />
+            <div className="light-list"><PlayerList /></div>
           </li>
           <li className={`panel step-card ${L.telegram ? "done" : ""}`}>
             <h2>Collega il gruppo Telegram</h2>
@@ -149,6 +150,7 @@ export function Admin({ token }: { token: string }) {
           <div className="panel cta-card">
             <h2>Giornata {L.nextMatchday}</h2>
             <p>Si gioca il {fmtDate(L.nextMatchDate)} alle 21:00, in automatico. Formazioni pronte: <strong>{d.participants.filter((x: any) => !x.isCpu && x.confirmed).length}/{d.participants.filter((x: any) => !x.isCpu).length}</strong></p>
+            <div className="progress-dots" aria-hidden style={{ marginBottom: 8 }}>{d.participants.filter((x: any) => !x.isCpu).map((x: any) => <i key={x.id} className={x.confirmed ? "on" : ""} />)}</div>
             <ul className="checklist" style={{ marginBottom: 12 }}>
               {d.participants.filter((x: any) => !x.isCpu).map((x: any) => (
                 <li key={x.id}><span className="ck">{x.confirmed ? "✅" : "⏳"}</span><span>{x.owner}: {x.confirmed ? "formazione pronta" : "deve ancora scegliere"}</span></li>
@@ -158,7 +160,7 @@ export function Admin({ token }: { token: string }) {
             <p className="small muted" style={{ marginTop: 8 }}>Utile per provare il gioco o recuperare una giornata.</p>
           </div>
           <div className="panel"><h2>Telegram</h2>{Telegram}</div>
-          <div className="panel"><h2>Link dei giocatori</h2><PlayerList compact /></div>
+          <div className="panel"><h2 style={{ display: "flex", gap: 8, alignItems: "center" }}><IcUsers />Link dei giocatori</h2><div className="light-list"><PlayerList compact /></div></div>
         </>
       )}
 

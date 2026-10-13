@@ -197,7 +197,17 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
         };
       }
       const { results: offers } = c ? await env.DB.prepare("SELECT * FROM offers WHERE league_id = ? AND season = ? AND (from_club = ? OR to_club = ?) ORDER BY created_at DESC").bind(l.id, l.season, c.id, c.id).all() : { results: [] };
-      return json({ ...view, player: { id: p.id, name: p.name }, mine, offers, now: romeNow() });
+      let myScorers: { name: string; goals: number }[] = [];
+      if (c && c.status === "ready" && l.matchday_played > 0) {
+        const { results: mm } = await env.DB.prepare("SELECT home_id, away_id, data FROM matches WHERE league_id = ? AND season = ? AND played = 1 AND (home_id = ? OR away_id = ?)").bind(l.id, l.season, c.id, c.id).all<{ home_id: string; away_id: string; data: string }>();
+        const tally = new Map<string, number>();
+        for (const x of mm) {
+          const side = x.home_id === c.id ? "home" : "away";
+          for (const e of JSON.parse(x.data).events ?? []) if (e.type === "gol" && e.team === side) tally.set(e.player, (tally.get(e.player) ?? 0) + 1);
+        }
+        myScorers = [...tally.entries()].map(([name, goals]) => ({ name, goals })).sort((a, b) => b.goals - a.goals);
+      }
+      return json({ ...view, player: { id: p.id, name: p.name }, mine, offers, myScorers, now: romeNow() });
     }
     if (!c) throw new HttpError(400, "La stagione è già iniziata senza il tuo club: aspetta la prossima.");
 

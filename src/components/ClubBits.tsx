@@ -68,3 +68,14 @@ export function Bar({ value, color }: { value: number; color: string }) {
 export function Form({ form }: { form: string[] }) {
   return <span aria-label={`Ultime: ${form.join(" ")}`}>{form.map((f, i) => <i key={i} className={`dot ${f}`} />)}</span>;
 }
+
+export function ScoreHead({ h, a, hg, ag }: { h: any; a: any; hg: number; ag: number }) {
+  return (
+    <div className="score-head">
+      <div><Crest name={h.name} colors={h.colors} shape={h.crest} size={54} /><div className="nm">{h.name}</div><div className="vt">voto {h.voto}</div></div>
+      <div className="sc">{hg} - {ag}</div>
+      <div><Crest name={a.name} colors={a.colors} shape={a.crest} size={54} /><div className="nm">{a.name}</div><div className="vt">voto {a.voto}</div></div>
+    </div>
+  );
+}
+

@@ -1,4 +1,4 @@
-import type { Atteggiamento, Choices, Club, ClubState, MatchEvent, MatchResult, Modulo, Ratings, RosterPlayer } from "./types";
+import type { Atteggiamento, Choices, Club, ClubState, MatchEvent, MatchResult, MatchStats, Modulo, Ratings, RosterPlayer } from "./types";
 import { makeRng, type Rng } from "./rng";
 import { clamp } from "./club";
 
@@ -91,6 +91,22 @@ function pickSchema(rng: Rng, t: TeamCtx, r: Ratings, scorer: RosterPlayer, isGo
   return opts[rng.weighted(opts)].id;
 }
 
+const POSS_ADJ: Record<Atteggiamento, number> = { equilibrato: 0, offensivo: 3, difensivo: -4, contropiede: -5, pressing: 3 };
+
+/** Tiri dagli eventi; possesso dal confronto dei centrocampi e dagli atteggiamenti. */
+export function matchStats(events: MatchEvent[], cenH: number, cenA: number, attH: Atteggiamento, attA: Atteggiamento, rng?: Rng): MatchStats {
+  const shots: [number, number] = [0, 0], onTarget: [number, number] = [0, 0];
+  for (const e of events) {
+    if (e.type === "rosso" || e.type === "giallo") continue;
+    const i = e.team === "home" ? 0 : 1;
+    shots[i]++;
+    if (e.type === "gol" || e.type === "parata") onTarget[i]++;
+  }
+  let p = 50 + (cenH - cenA) * 1.2 + POSS_ADJ[attH] - POSS_ADJ[attA] + (rng ? (rng.next() - 0.5) * 6 : 0);
+  p = Math.round(clamp(p, 30, 70));
+  return { shots, onTarget, possession: [p, 100 - p] };
+}
+
 export function simulateMatch(home: TeamCtx, away: TeamCtx, matchday: number, seed: string): MatchResult {
   const rng = makeRng(seed);
   const [xh, xa] = expectedGoals(home, away, matchday);
@@ -135,5 +151,6 @@ export function simulateMatch(home: TeamCtx, away: TeamCtx, matchday: number, se
   const highlights = [...must];
   for (const e of rest) { if (highlights.length >= 8) break; if (e.type === "parata" || highlights.length < 5) highlights.push(e); }
   highlights.sort((x, y) => x.minute - y.minute);
-  return { homeGoals: teams.home.goals, awayGoals: teams.away.goals, xg: [Math.round(xh * 100) / 100, Math.round(xa * 100) / 100], events, highlights: highlights.slice(0, Math.max(8, must.length)) };
+  const stats = matchStats(events, sh.r.cen, sa.r.cen, home.choices.atteggiamento, away.choices.atteggiamento, rng);
+  return { homeGoals: teams.home.goals, awayGoals: teams.away.goals, xg: [Math.round(xh * 100) / 100, Math.round(xa * 100) / 100], events, highlights: highlights.slice(0, Math.max(8, must.length)), stats };
 }

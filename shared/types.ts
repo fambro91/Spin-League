@@ -146,4 +146,7 @@ export type MatchResult = {
   xg: [number, number];
   events: MatchEvent[];
   highlights: MatchEvent[];
+  stats?: MatchStats;
 };
+
+export type MatchStats = { shots: [number, number]; onTarget: [number, number]; possession: [number, number] };
