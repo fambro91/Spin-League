@@ -88,8 +88,9 @@ async function boot() {
 }
 
 let saving = Promise.resolve();
+let wiped = false;
 function persist() {
-  if (!shim) return;
+  if (!shim || wiped) return;
   const bytes = shim.db.export();
   saving = saving.then(() => idbPut(bytes));
 }
@@ -113,6 +114,7 @@ export async function soloApi<T = any>(path: string, opts: { method?: string; bo
 
 /** Cancella la carriera salvata su questo dispositivo. */
 export async function wipeSolo() {
+  wiped = true; // nessun salvataggio dopo la cancellazione (la pagina si ricarica subito)
   await saving;
   await idbPut(null);
 }

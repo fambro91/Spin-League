@@ -8,7 +8,7 @@ import { AppBar } from "../components/AppBar";
 import { ding, unlockAudio } from "../feedback";
 import type { SpinRecord } from "../../shared/types";
 
-type Props = { token: string; creation: { done: SpinRecord[]; next: string | null; remaining: number; streak: number; luckyCount: number }; onFinished: () => void };
+type Props = { onRestart?: React.ReactNode; token: string; creation: { done: SpinRecord[]; next: string | null; remaining: number; streak: number; luckyCount: number }; onFinished: () => void };
 type SpinRes = { record: SpinRecord; combo: boolean; next: string | null; remaining: number; status: string; streak: number };
 
 function resultLabel(wheelId: string, r: SpinRecord) {
@@ -17,7 +17,7 @@ function resultLabel(wheelId: string, r: SpinRecord) {
   return r.label;
 }
 
-export function Creation({ token, creation, onFinished }: Props) {
+export function Creation({ token, creation, onFinished, onRestart }: Props) {
   const [wheelId, setWheelId] = useState<string>(creation.next ?? "citta");
   const [target, setTarget] = useState<SpinTarget | null>(null);
   const [phase, setPhase] = useState<"ready" | "spinning" | "revealed">("ready");
@@ -64,7 +64,7 @@ export function Creation({ token, creation, onFinished }: Props) {
 
   return (
     <div className="stage">
-      <AppBar title="Crea il tuo club" left={<span className="stage-count">{Math.min(done.length + 1, total)}/{total}</span>} right={<MuteButton />} progress={done.length / Math.max(1, total)} />
+      <AppBar title="Crea il tuo club" left={onRestart ?? <span className="stage-count">{Math.min(done.length + 1, total)}/{total}</span>} right={<MuteButton />} progress={done.length / Math.max(1, total)} />
 
       <div className={`question ${gold ? "gold" : ""} ${special ? "special" : ""}`}>
         <span className="q-badge" aria-hidden>{wheel.emoji}</span>

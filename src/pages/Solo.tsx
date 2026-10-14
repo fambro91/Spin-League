@@ -3,6 +3,7 @@ import { api, store } from "../api";
 import { Player } from "./Player";
 import { Logo } from "../components/Logo";
 import { AppBar } from "../components/AppBar";
+import { IcRotate } from "../components/Icons";
 
 export type SoloSave = { playerToken: string; adminToken: string; teams: number; name: string };
 export const SOLO_KEY = "spin:solo";
@@ -18,6 +19,31 @@ export async function restartSolo() {
   try { localStorage.removeItem(SOLO_KEY); } catch { /* storage non disponibile */ }
   location.hash = "#/solo";
   location.reload();
+}
+
+/** Pulsante ↻ con conferma: cancella la carriera da qualsiasi schermata (anche a metà degli spin). */
+export function RestartButton({ plain = true }: { plain?: boolean }) {
+  const [ask, setAsk] = useState(false);
+  const [busy, setBusy] = useState(false);
+  return (
+    <>
+      <button className={`icon-btn ${plain ? "plain" : ""}`} aria-label="Ricomincia la carriera" onClick={() => setAsk(true)}><IcRotate /></button>
+      {ask && (
+        <div className="modal confirm" role="dialog" aria-label="Ricomincia la carriera">
+          <div className="wrap">
+            <div className="panel cta-card">
+              <h2>Ricominciare la carriera?</h2>
+              <p>Cancelli tutto quello che hai fatto finora su questo dispositivo (club, campionato e albo d'oro) e riparti dalla schermata iniziale.</p>
+              <div className="stack">
+                <button className="btn block" disabled={busy} onClick={() => { setBusy(true); restartSolo(); }}>{busy ? "Ricomincio…" : "Sì, ricomincia"}</button>
+                <button className="btn ghost block" disabled={busy} onClick={() => setAsk(false)}>Annulla</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
 
 const TEAMS = [6, 8, 10, 12];

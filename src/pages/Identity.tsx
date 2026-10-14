@@ -11,7 +11,7 @@ const PRESETS: [string, string][] = [
 ];
 const CRESTS: Id["crest"][] = ["scudo", "cerchio", "rombo", "stella"];
 
-export function Identity({ token, draft, seed, onDone }: { token: string; draft: Draft; seed: string; onDone: () => void }) {
+export function Identity({ token, draft, seed, onDone, onRestart }: { token: string; draft: Draft; seed: string; onDone: () => void; onRestart?: React.ReactNode }) {
   const [name, setName] = useState("");
   const [colors, setColors] = useState<[string, string]>(PRESETS[0]);
   const [crest, setCrest] = useState<Id["crest"]>("scudo");
@@ -29,7 +29,7 @@ export function Identity({ token, draft, seed, onDone }: { token: string; draft:
 
   return (
     <div className="wrap">
-      <h1 style={{ marginTop: 12 }}>Fonda il club</h1>
+      {onRestart ? <div className="row spread" style={{ marginTop: 12 }}><h1 style={{ margin: 0 }}>Fonda il club</h1>{onRestart}</div> : <h1 style={{ marginTop: 12 }}>Fonda il club</h1>}
       <p className="muted">Le ruote hanno deciso tutto il resto. Ora scegli nome, colori e stemma.</p>
       <div className="panel card-club">
         <Crest name={preview.name} colors={colors} shape={crest} size={84} />

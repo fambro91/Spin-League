@@ -456,3 +456,4 @@ textarea { width: 100%; background: rgba(0, 0, 0, 0.28); border: 1px solid var(-
 .solo-prog i { display: block; height: 100%; background: var(--amber); border-radius: 3px; }
 .solo-card { display: grid; grid-template-columns: 52px 1fr; gap: 12px; align-items: center; }
 .solo-card .ic { font-size: 38px; text-align: center; }
+.modal.confirm { z-index: 80; display: grid; align-items: center; background: rgba(4, 18, 12, 0.92); }

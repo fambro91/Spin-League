@@ -1,7 +1,7 @@
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { api, fmtDate, store } from "../api";
-import { restartSolo } from "./Solo";
+import { RestartButton } from "./Solo";
 import { Creation } from "./Creation";
 import { Identity } from "./Identity";
 import { Serata, seenKey } from "./Serata";
@@ -42,7 +42,6 @@ export function Player({ token, solo }: { token: string; solo?: SoloOpts }) {
   const [serata, setSerata] = useState<number | null>(null);
   const [sheet, setSheet] = useState<"tactics" | "market" | "dilemmi" | "stampa" | "pronostici" | "sfida" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [askRestart, setAskRestart] = useState(false);
 
   const load = async () => {
     try { const r = await api(`me/${token}`); if (solo) r.solo = true; setD(r); setErr(null); } catch (e: any) { setErr(e.message); }
@@ -53,8 +52,9 @@ export function Player({ token, solo }: { token: string; solo?: SoloOpts }) {
 
   if (!d) return <div className="wrap">{err ? <div className="error">{err}</div> : <p>Carico…</p>}</div>;
   const mine = d.mine;
-  if (mine?.status === "creating") return <Creation token={token} creation={mine.creation} onFinished={load} />;
-  if (mine?.status === "identity") return <Identity token={token} draft={mine.creation.draft} seed={mine.id} onDone={load} />;
+  const restartBtn = solo ? <RestartButton /> : undefined;
+  if (mine?.status === "creating") return <Creation token={token} creation={mine.creation} onFinished={load} onRestart={restartBtn} />;
+  if (mine?.status === "identity") return <Identity token={token} draft={mine.creation.draft} seed={mine.id} onDone={load} onRestart={restartBtn} />;
 
   const clubsById = new Map<string, any>(d.clubs.map((c: any) => [c.id, c]));
   const unseenMd = d.league.matchdayPlayed > Number(store.get(seenKey(d.league.id, d.league.season)) ?? 0);
@@ -68,7 +68,7 @@ export function Player({ token, solo }: { token: string; solo?: SoloOpts }) {
     <>
       <div className="wrap">
         <div className="head-center">
-          {solo ? <button className="icon-btn plain" aria-label="Ricomincia la carriera" onClick={() => setAskRestart(true)}><IcRotate /></button>
+          {solo ? <RestartButton />
             : adminToken ? <a className="icon-btn plain" aria-label="Gestisci campionato" href={`#/admin/${adminToken}`} style={{ color: "var(--chalk)" }}><IcGear /></a> : <span />}
           <div className="brand"><Logo size={34} wordmark={false} />Spin League</div>
           <button className="icon-btn plain" aria-label="Notizie" onClick={() => setTab("notizie")}><IcBell /></button>
@@ -95,21 +95,6 @@ export function Player({ token, solo }: { token: string; solo?: SoloOpts }) {
       {sheet === "stampa" && <PressSheet d={d} token={token} reload={load} onClose={() => setSheet(null)} />}
       {sheet === "pronostici" && <PredictionsSheet d={d} token={token} reload={load} onClose={() => setSheet(null)} />}
       {sheet === "sfida" && <ChallengeSheet d={d} token={token} reload={load} onClose={() => setSheet(null)} />}
-      {askRestart && (
-        <div className="modal" role="dialog" aria-label="Ricomincia la carriera">
-          <div className="wrap">
-            <AppBar title="Ricomincia" onBack={() => setAskRestart(false)} />
-            <div className="panel cta-card">
-              <h2>Ricominciare da zero?</h2>
-              <p>La carriera attuale ({d.league.name}, stagione {d.league.season}) viene cancellata da questo dispositivo. Poi crei un nuovo club con le ruote.</p>
-              <div className="stack">
-                <button className="btn block" onClick={() => restartSolo()}>Sì, ricomincia</button>
-                <button className="btn ghost block" onClick={() => setAskRestart(false)}>Annulla</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }
