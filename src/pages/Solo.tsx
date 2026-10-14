@@ -6,7 +6,7 @@ import { AppBar } from "../components/AppBar";
 import { IcRotate } from "../components/Icons";
 
 export type SoloSave = { playerToken: string; adminToken: string; teams: number; name: string };
-export const SOLO_KEY = "spin:solo";
+export const SOLO_KEY = "spin:career"; // carriera dinastia (le vecchie carriere "spin:solo" non sono compatibili)
 
 export function loadSolo(): SoloSave | null {
   try { return JSON.parse(store.get(SOLO_KEY) ?? "null"); } catch { return null; }
@@ -77,16 +77,16 @@ export function Solo() {
       <div style={{ textAlign: "center", margin: "6px 0 14px" }}><Logo size={110} /></div>
       <form className="panel cta-card" onSubmit={start}>
         <h2>La tua carriera</h2>
-        <p className="muted small">Crei il club con le ruote e affronti un campionato contro squadre bot. Giochi le giornate quando vuoi, una dietro l'altra. La partita resta salvata su questo dispositivo e funziona anche senza connessione.</p>
+        <p className="muted small">Crei il club con le ruote e parti dalla Serie B. Promozioni, retrocessioni, obiettivi della società e partite in diretta in cui decidi tu. La partita resta salvata su questo dispositivo e funziona anche senza connessione.</p>
         {err && <div className="error">{err}</div>}
         <label className="field"><span>Il tuo nome</span>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Giacomo" maxLength={24} required />
         </label>
-        <div className="field"><span>Squadre nel campionato</span>
-          <div className="seg" role="radiogroup" aria-label="Squadre nel campionato" style={{ marginTop: 6 }}>
+        <div className="field"><span>Squadre per divisione</span>
+          <div className="seg" role="radiogroup" aria-label="Squadre per divisione" style={{ marginTop: 6 }}>
             {TEAMS.map((t) => <button type="button" key={t} role="radio" aria-checked={teams === t} aria-selected={teams === t} onClick={() => setTeams(t)}>{t}</button>)}
           </div>
-          <span className="small muted">{teams} squadre = {(teams - 1) * 2} giornate</span>
+          <span className="small muted">Serie A e Serie B da {teams} squadre · {(teams - 1) * 2} giornate a stagione</span>
         </div>
         <button className="btn block pulse" disabled={busy || !name.trim()}>{busy ? "Preparo…" : "Inizia la carriera"}</button>
       </form>

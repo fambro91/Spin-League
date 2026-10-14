@@ -6,7 +6,7 @@ import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
 import { handleApi } from "../../worker/api";
 import type { Env } from "../../worker/db";
 
-const IDB = "spin-solo", STORE = "kv", KEY = "db";
+const IDB = "spin-career", STORE = "kv", KEY = "db";
 
 function idb(): Promise<IDBDatabase> {
   return new Promise((res, rej) => {

@@ -23,6 +23,7 @@ const SCHEMA = [
     to_club TEXT NOT NULL, money REAL NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS days (league_id TEXT NOT NULL, season INTEGER NOT NULL, matchday INTEGER NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (league_id, season, matchday))`,
   `CREATE TABLE IF NOT EXISTS challenges (id TEXT PRIMARY KEY, league_id TEXT NOT NULL, season INTEGER NOT NULL, matchday INTEGER NOT NULL, from_club TEXT NOT NULL, to_club TEXT NOT NULL, stake REAL NOT NULL, status TEXT NOT NULL, result TEXT, created_at TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS careers (league_id TEXT PRIMARY KEY, shadow_id TEXT NOT NULL, division TEXT NOT NULL, data TEXT NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS idx_clubs_league ON clubs(league_id, season)`,
   `CREATE INDEX IF NOT EXISTS idx_matches_league ON matches(league_id, season, matchday)`,
   `CREATE INDEX IF NOT EXISTS idx_news_league ON news(league_id, season)`,

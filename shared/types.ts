@@ -42,6 +42,8 @@ export type Fuoriclasse = {
   levelLabel: string;
   bonus: number;
   decays: boolean;
+  /** Stagioni in rosa (carriera). */
+  seasons?: number;
 };
 
 export type LuckyOp =
@@ -136,6 +138,8 @@ export type ClubState = {
   marketOps: number;
   /** Club rivale (dalle ruote speciali). */
   rivalId?: string | null;
+  /** Partita in diretta della carriera (decisioni prese finora). */
+  live?: { md: number; decisions: any[] };
   marketDelta: Partial<Record<Reparto, number>>;
   lastResults: ("V" | "N" | "P")[];
   // gestione (opzionali per compatibilità con i club già creati)

@@ -135,7 +135,7 @@ export function matchdayDate(l: LeagueRow, md: number) {
 }
 
 /** Gioca la prossima giornata. */
-export async function playMatchday(env: Env, l: LeagueRow): Promise<{ matchday: number } | null> {
+export async function playMatchday(env: Env, l: LeagueRow, overrides?: Map<string, MatchResult>): Promise<{ matchday: number } | null> {
   if (l.status !== "running") return null;
   const md = l.matchday_played + 1;
   if (md > l.total_matchdays) return null;
@@ -144,14 +144,14 @@ export async function playMatchday(env: Env, l: LeagueRow): Promise<{ matchday: 
   const claim = await env.DB.prepare("UPDATE leagues SET matchday_played = ? WHERE id = ? AND matchday_played = ?").bind(md, l.id, md - 1).run();
   if (!claim.meta.changes) return null;
   try {
-    return await playClaimed(env, l, md);
+    return await playClaimed(env, l, md, overrides);
   } catch (e) {
     await env.DB.prepare("UPDATE leagues SET matchday_played = ? WHERE id = ? AND matchday_played = ?").bind(md - 1, l.id, md).run();
     throw e;
   }
 }
 
-async function playClaimed(env: Env, l: LeagueRow, md: number): Promise<{ matchday: number }> {
+async function playClaimed(env: Env, l: LeagueRow, md: number, overrides?: Map<string, MatchResult>): Promise<{ matchday: number }> {
   const rows = await loadClubs(env, l);
   const clubs = new Map(rows.map((r) => [r.id, bundle(r)]));
   const allMatches = await loadMatches(env, l);
@@ -179,7 +179,7 @@ async function playClaimed(env: Env, l: LeagueRow, md: number): Promise<{ matchd
     const H = clubs.get(m.home_id)!, A = clubs.get(m.away_id)!;
     const hc = choicesFor(H.club, H.state, H.isCpu, md), ac = choicesFor(A.club, A.state, A.isCpu, md);
     const derby = isDerby(H, A);
-    const res: MatchResult = simulateMatch({ club: H.club, state: H.state, choices: hc, home: true, derby }, { club: A.club, state: A.state, choices: ac, home: false, derby }, md, `${l.seed}:${m.id}`);
+    const res: MatchResult = overrides?.get(m.id) ?? simulateMatch({ club: H.club, state: H.state, choices: hc, home: true, derby }, { club: A.club, state: A.state, choices: ac, home: false, derby }, md, `${l.seed}:${m.id}`);
     afterMatch(H.club, H.state, hc, res.homeGoals, res.awayGoals, true, derby, md);
     afterMatch(A.club, A.state, ac, res.awayGoals, res.homeGoals, false, derby, md);
     if (res.homeGoals !== res.awayGoals) {
@@ -260,6 +260,8 @@ async function playClaimed(env: Env, l: LeagueRow, md: number): Promise<{ matchd
       }
     }
     events.push("Si apre il mercato del giro di boa: un giorno per rinforzarsi.");
+  } else if (md === 1 && l.market_open) {
+    marketOpen = 0; // mercato estivo della carriera: chiude alla prima giornata
   } else if (md === half + 1) {
     marketOpen = 0;
     stmts.push(env.DB.prepare("UPDATE offers SET status = 'scaduta' WHERE league_id = ? AND season = ? AND status = 'aperta'").bind(l.id, l.season));
@@ -322,7 +324,11 @@ async function playClaimed(env: Env, l: LeagueRow, md: number): Promise<{ matchd
   return { matchday: md };
 }
 
+/** Le leghe di gruppo sono congelate: niente partite automatiche né promemoria. */
+export const GROUP_ENABLED = false;
+
 export async function cronTick(env: Env, when = new Date()) {
+  if (!GROUP_ENABLED) return;
   const now = romeNow(when);
   const { results } = await env.DB.prepare("SELECT * FROM leagues WHERE status = 'running'").all<LeagueRow>();
   for (const l of results) {

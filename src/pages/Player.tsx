@@ -2,6 +2,8 @@ import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { api, fmtDate, store } from "../api";
 import { RestartButton } from "./Solo";
+import { CareerPreseason, CareerStrip, OtherTable, Palmares } from "./Career";
+import { Live } from "./Live";
 import { Creation } from "./Creation";
 import { Identity } from "./Identity";
 import { Serata, seenKey } from "./Serata";
@@ -30,6 +32,7 @@ type Ctx = {
   openClub: (id: string) => void; openMatch: (id: string) => void; openSerata: (md: number) => void;
   openTactics: () => void; openMarket: () => void; goTab: (t: Tab) => void; openSheet: (s: "dilemmi" | "stampa" | "pronostici" | "sfida") => void;
   solo?: SoloOpts;
+  openLive?: () => void;
 };
 type SoloOpts = { adminToken: string; teams: number };
 
@@ -42,6 +45,7 @@ export function Player({ token, solo }: { token: string; solo?: SoloOpts }) {
   const [serata, setSerata] = useState<number | null>(null);
   const [sheet, setSheet] = useState<"tactics" | "market" | "dilemmi" | "stampa" | "pronostici" | "sfida" | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [live, setLive] = useState(false);
 
   const load = async () => {
     try { const r = await api(`me/${token}`); if (solo) r.solo = true; setD(r); setErr(null); } catch (e: any) { setErr(e.message); }
@@ -61,7 +65,7 @@ export function Player({ token, solo }: { token: string; solo?: SoloOpts }) {
   const adminToken = store.get(`spin:admin:${d.league.id}`);
   const ctx: Ctx = {
     d, token, reload: load, clubsById, openClub: setClubModal, openMatch: setMatchModal, openSerata: setSerata,
-    openTactics: () => setSheet("tactics"), openMarket: () => setSheet("market"), goTab: setTab, openSheet: setSheet, solo,
+    openTactics: () => setSheet("tactics"), openMarket: () => setSheet("market"), goTab: setTab, openSheet: setSheet, solo, openLive: () => setLive(true),
   };
 
   return (
@@ -88,6 +92,10 @@ export function Player({ token, solo }: { token: string; solo?: SoloOpts }) {
       </nav></div>
       {clubModal && <ClubModal club={clubsById.get(clubModal)} rival={clubsById.get(clubsById.get(clubModal)?.rivalId)} onClose={() => setClubModal(null)} />}
       {matchModal && <MatchModal token={token} id={matchModal} clubsById={clubsById} onClose={() => setMatchModal(null)} />}
+      {live && solo && <Live token={token} clubsById={clubsById} onClose={() => { setLive(false); load(); }} onFinish={async () => {
+        try { const r = await api<{ matchday: number }>(`admin/${solo.adminToken}/career-play`, { method: "POST" }); await load(); setLive(false); setSerata(r.matchday); }
+        catch (e: any) { setErr(e.message); setLive(false); }
+      }} />}
       {serata && <Serata token={token} md={serata} d={d} onClose={() => { setSerata(null); load(); }} />}
       {sheet === "tactics" && <TacticsSheet d={d} token={token} onClose={(ok) => { setSheet(null); if (ok) { setToast("Formazione confermata per stasera."); load(); } }} />}
       {sheet === "market" && <MarketSheet d={d} token={token} reload={load} onClose={() => setSheet(null)} />}
@@ -102,12 +110,12 @@ export function Player({ token, solo }: { token: string; solo?: SoloOpts }) {
 /* ---------------- OGGI ---------------- */
 
 
-function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTactics, openMarket, openMatch, openSheet, solo }: Ctx) {
+function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTactics, openMarket, openMatch, openSheet, solo, openLive }: Ctx) {
   const L = d.league, mine = d.mine;
   const myId = mine?.id;
   const seen = Number(store.get(seenKey(L.id, L.season)) ?? 0);
 
-  if (L.status === "setup" && solo) return <SoloStart d={d} solo={solo} reload={reload} />;
+  if (L.status === "setup" && solo) return d.career ? <CareerPreseason d={d} solo={solo} reload={reload} /> : <SoloStart d={d} solo={solo} reload={reload} />;
   if (L.status === "setup") {
     const humans = d.participants.filter((p: any) => !p.isCpu);
     const ready = humans.filter((p: any) => p.status === "ready").length;
@@ -139,7 +147,8 @@ function TodayTab({ d, token, reload, clubsById, openClub, openSerata, openTacti
         <div className="big">{L.status === "finished" ? "Si alza la coppa" : solo ? "Tocca a te" : today ? "Stasera si gioca" : `Si gioca il ${fmtDate(L.nextMatchDate)}`}</div>
       </div>
 
-      {solo && <SoloPlay d={d} solo={solo} reload={reload} openSerata={openSerata} unseen={!!unseen} />}
+      {solo && d.career && <CareerStrip car={d.career} />}
+      {solo && <SoloPlay d={d} solo={solo} reload={reload} unseen={!!unseen} openLive={openLive!} />}
 
       {unseen && (
         <div className="panel cta-card">
@@ -207,7 +216,7 @@ function SoloStart({ d, solo, reload }: { d: any; solo: SoloOpts; reload: () => 
   const [err, setErr] = useState<string | null>(null);
   const go = async () => {
     setBusy(true); setErr(null);
-    try { await api(`admin/${solo.adminToken}/start`, { body: { teams: solo.teams, firstDay: "oggi" } }); await reload(); }
+    try { await api(`admin/${solo.adminToken}/career-setup`, { body: { teams: solo.teams } }); await reload(); }
     catch (e: any) { setErr(e.message); }
     setBusy(false);
   };
@@ -215,37 +224,32 @@ function SoloStart({ d, solo, reload }: { d: any; solo: SoloOpts; reload: () => 
     <>
       <div className="today-head"><div className="big">Il club è pronto</div></div>
       <div className="panel cta-card">
-        <p>{d.mine?.club?.name} affronterà {solo.teams - 1} squadre bot, andata e ritorno: {(solo.teams - 1) * 2} giornate.</p>
+        <p>{d.mine?.club?.name} parte dalla <strong>Serie B</strong> contro {solo.teams - 1} squadre bot, andata e ritorno. Sopra c'è la Serie A: le prime {2} salgono.</p>
         {err && <div className="error">{err}</div>}
-        <button className="btn block pulse" disabled={busy} onClick={go}>{busy ? "Genero il calendario…" : "Avvia il campionato"}</button>
+        <button className="btn block pulse" disabled={busy} onClick={go}>{busy ? "Preparo le due divisioni…" : "Entra in carriera"}</button>
       </div>
       <p className="small muted">Intanto puoi guardare la tua scheda in "Squadra".</p>
     </>
   );
 }
 
-function SoloPlay({ d, solo, reload, openSerata, unseen }: { d: any; solo: SoloOpts; reload: () => Promise<void>; openSerata: (md: number) => void; unseen: boolean }) {
+function SoloPlay({ d, solo, reload, unseen, openLive }: { d: any; solo: SoloOpts; reload: () => Promise<void>; unseen: boolean; openLive: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const L = d.league;
-  const play = async () => {
-    setBusy(true); setErr(null);
-    try { const r = await api<{ matchday: number }>(`admin/${solo.adminToken}/play-now`, { method: "POST" }); await reload(); openSerata(r.matchday); }
-    catch (e: any) { setErr(e.message); }
-    setBusy(false);
-  };
+  const resume = d.mine?.state?.live?.md === L.nextMatchday && d.mine.state.live.decisions.length > 0;
   const newSeason = async () => {
     setBusy(true); setErr(null);
-    try { await api(`admin/${solo.adminToken}/new-season`, { method: "POST" }); await reload(); }
+    try { await api(`admin/${solo.adminToken}/career-end`, { method: "POST" }); await reload(); window.scrollTo(0, 0); }
     catch (e: any) { setErr(e.message); }
     setBusy(false);
   };
   if (L.status === "finished") return (
     <div className="panel cta-card">
       <h3>Stagione finita</h3>
-      <p className="small muted">Una nuova stagione riparte da zero: nuovo club con le ruote, nuovo campionato. L'albo d'oro resta.</p>
+      <p className="small muted">Promozioni, retrocessioni e verdetto della società: scopri com'è andata e prepara la prossima stagione.</p>
       {err && <div className="error">{err}</div>}
-      <button className="btn block pulse" disabled={busy} onClick={newSeason}>Nuova stagione</button>
+      <button className="btn block pulse" disabled={busy} onClick={newSeason}>{busy ? "La società si riunisce…" : "Chiudi la stagione"}</button>
     </div>
   );
   if (L.status !== "running") return null;
@@ -254,9 +258,9 @@ function SoloPlay({ d, solo, reload, openSerata, unseen }: { d: any; solo: SoloO
       <div className="row spread">
         <div><div className="small muted">Giornata {L.nextMatchday} di {L.totalMatchdays}</div><div className="solo-prog"><i style={{ width: `${(L.matchdayPlayed / L.totalMatchdays) * 100}%` }} /></div></div>
       </div>
-      <p className="small muted" style={{ margin: "8px 0 12px" }}>Prepara formazione e agenda qui sotto, poi fischio d'inizio. Nessuna attesa: la giornata si gioca subito.</p>
+      <p className="small muted" style={{ margin: "8px 0 12px" }}>Prepara formazione e agenda qui sotto, poi scendi in campo: la tua partita si gioca in diretta e decidi tu nei momenti chiave.</p>
       {err && <div className="error">{err}</div>}
-      <button className={`btn block ${unseen ? "" : "pulse"}`} disabled={busy} onClick={play}>{busy ? "Si gioca…" : `Gioca la giornata ${L.nextMatchday}`}</button>
+      <button className={`btn block ${unseen ? "" : "pulse"}`} disabled={busy} onClick={openLive}>{resume ? "Riprendi la partita" : `Gioca la giornata ${L.nextMatchday}`}</button>
     </div>
   );
 }
@@ -595,14 +599,14 @@ function TableTab({ d, openClub, clubsById }: Ctx) {
   return (
     <>
       <div className="panel">
-        <h2>Classifica</h2>
+        <h2>{d.career ? d.career.divisionLabel : "Classifica"}</h2>
         {d.table.length === 0 ? <p className="muted">La classifica compare quando parte il campionato.</p> : (
           <>
             <table className="table">
               <thead><tr><th>#</th><th>Squadra</th><th>G</th><th>DR</th><th>Pt</th></tr></thead>
               <tbody>
                 {d.table.map((r: any, i: number) => (
-                  <tr key={r.id} className={r.id === myId ? "me" : ""} onClick={() => openClub(r.id)} style={{ cursor: "pointer" }}>
+                  <tr key={r.id} className={`${r.id === myId ? "me" : ""} ${d.career ? (d.career.division === "B" ? (i < d.career.promo ? "zone-up" : "") : (i >= d.table.length - d.career.promo ? "zone-down" : "")) : ""}`} onClick={() => openClub(r.id)} style={{ cursor: "pointer" }}>
                     <td>{i + 1}</td>
                     <td><span className="swatch" style={{ background: r.colors[0] }} />{r.name}<div className="small muted">{r.owner} <Form form={r.form} /></div></td>
                     <td>{r.g}</td>
@@ -616,13 +620,16 @@ function TableTab({ d, openClub, clubsById }: Ctx) {
           </>
         )}
       </div>
+      {d.career && <p className="small muted" style={{ margin: "-6px 4px 12px" }}>{d.career.division === "B" ? `Le prime ${d.career.promo} salgono in Serie A.` : `Le ultime ${d.career.promo} scendono in Serie B.`}</p>}
+      {d.career && <OtherTable car={d.career} />}
       {d.stats && <LeagueStats d={d} clubsById={clubsById} />}
+      {d.career && <Palmares car={d.career} />}
       {d.league.history.length > 0 && (
         <div className="panel">
           <h2>Albo d'oro</h2>
           {[...d.league.history].reverse().map((h: any) => (
             <div key={h.season} style={{ marginBottom: 10 }}>
-              <h3>Stagione {h.season}: {h.table[0]?.name}</h3>
+              <h3>Stagione {h.season}{h.division ? ` · ${h.division}` : ""}: {h.table[0]?.name}</h3>
               <p className="small muted">{h.table[0]?.owner} · {h.table[0]?.pt} punti</p>
               {h.awards.map((a: any) => <div key={a.title} className="small">{a.title}: {a.text}</div>)}
             </div>

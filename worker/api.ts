@@ -11,6 +11,7 @@ import { applyDilemma, buyInvestment, dealDilemmas, TRAININGS } from "../shared/
 import { cryptoRng } from "../shared/rng";
 import { ATTEGGIAMENTI, MODULI, REPARTI, type ClubState, type CreationState, type Identity, type Reparto, type Training } from "../shared/types";
 import { esc, tgCall, tgSecret, tgSend } from "./telegram";
+import { careerEndSeason, careerKickoff, careerPlay, careerSetup, careerView, careerWheel, liveStep } from "./career";
 
 export class HttpError extends Error { constructor(public status: number, msg: string) { super(msg); } }
 export const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
@@ -149,6 +150,17 @@ export async function handleApi(req: Request, env: Env, url: URL): Promise<Respo
       catch (e: any) { throw new HttpError(400, e.message); }
       return json({ ok: true });
     }
+    // carriera (modalità da solo)
+    if (action?.startsWith("career-") && m === "POST") {
+      const b = await body<{ teams?: number }>(req);
+      try {
+        if (action === "career-setup") { await careerSetup(env, l, Number(b.teams) || 8); return json({ ok: true }); }
+        if (action === "career-wheel") return json(await careerWheel(env, l));
+        if (action === "career-kickoff") { await careerKickoff(env, l); return json({ ok: true }); }
+        if (action === "career-play") return json(await careerPlay(env, l));
+        if (action === "career-end") return json(await careerEndSeason(env, l));
+      } catch (e: any) { if (e instanceof HttpError) throw e; throw new HttpError(400, e.message); }
+    }
     if (action === "play-now" && m === "POST") {
       const r = await playMatchday(env, l);
       if (!r) throw new HttpError(400, "Nessuna giornata da giocare.");
@@ -228,7 +240,8 @@ export async function handleApi(req: Request, env: Env, url: URL): Promise<Respo
         }
         myScorers = [...tally.values()].sort((a, b) => b.goals - a.goals || b.assists - a.assists);
       }
-      return json({ ...view, player: { id: p.id, name: p.name }, mine, offers, myScorers, agenda, now: romeNow() });
+      const career = await careerView(env, l);
+      return json({ ...view, player: { id: p.id, name: p.name }, mine, offers, myScorers, agenda, career, now: romeNow() });
     }
     if (!c) throw new HttpError(400, "La stagione è già iniziata senza il tuo club: aspetta la prossima.");
 
@@ -256,6 +269,11 @@ export async function handleApi(req: Request, env: Env, url: URL): Promise<Respo
     const state: ClubState = JSON.parse(c.state!);
     const save = () => { state.budget = Math.round(state.budget * 10) / 10; return env.DB.prepare("UPDATE clubs SET club = ?, state = ? WHERE id = ?").bind(JSON.stringify(club), JSON.stringify(state), c!.id).run(); };
 
+    if (action === "live") {
+      const b = m === "POST" ? await body<{ decision?: any }>(req) : {};
+      try { return json(await liveStep(env, l, c, (b as any).decision)); }
+      catch (e: any) { throw new HttpError(400, e.message); }
+    }
     if (action === "choices" && m === "POST") {
       if (l.status !== "running") throw new HttpError(400, "Il campionato non è in corso.");
       const b = await body<any>(req);

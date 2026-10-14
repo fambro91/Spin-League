@@ -147,6 +147,14 @@ export function initialState(c: Club): ClubState {
 const CPU_NAMES = ["Atletico", "Real", "Sporting", "Virtus", "Pro", "Union", "Dinamo", "Olimpia", "Audace", "Fortitudo"];
 const CPU_COLORS: [string, string][] = [["#1d4ed8", "#ffffff"], ["#b91c1c", "#111827"], ["#15803d", "#ffffff"], ["#7c3aed", "#fde047"], ["#0f172a", "#f8fafc"], ["#ea580c", "#1e293b"], ["#0e7490", "#fef3c7"], ["#be185d", "#f1f5f9"]];
 
+/** Rende unico il nome di un club bot cambiando il prefisso (es. "Dinamo Pisa" → "Virtus Pisa"). */
+export function uniqueClubName(name: string, city: string, used: Set<string>): string {
+  if (!used.has(name)) { used.add(name); return name; }
+  for (const p of CPU_NAMES) { const n = `${p} ${city}`; if (!used.has(n)) { used.add(n); return n; } }
+  let i = 2; while (used.has(`${name} ${i}`)) i++;
+  const n = `${name} ${i}`; used.add(n); return n;
+}
+
 export function cpuIdentity(seed: string, city: string): Identity {
   const rng = makeRng("cpu:" + seed);
   return {

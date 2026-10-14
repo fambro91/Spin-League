@@ -48,7 +48,7 @@ export function strengths(t: TeamCtx, matchday: number) {
   return { off: (off + M) * k, dif: (dif + M) * k, r };
 }
 
-function kProp(a: Atteggiamento, opp: Atteggiamento) {
+export function kProp(a: Atteggiamento, opp: Atteggiamento) {
   switch (a) {
     case "offensivo": return 1.2;
     case "difensivo": return 0.8;
@@ -57,7 +57,7 @@ function kProp(a: Atteggiamento, opp: Atteggiamento) {
     default: return 1;
   }
 }
-function kConc(t: TeamCtx) {
+export function kConc(t: TeamCtx) {
   switch (t.choices.atteggiamento) {
     case "offensivo": return 1.15;
     case "difensivo": return t.club.coachStyle === "difensivista" ? 0.65 : 0.75;
@@ -74,7 +74,7 @@ export function expectedGoals(home: TeamCtx, away: TeamCtx, matchday: number): [
   return [xh, xa];
 }
 
-function pickScorer(rng: Rng, roster: RosterPlayer[], fuori: string | undefined, club?: Club): RosterPlayer {
+export function pickScorer(rng: Rng, roster: RosterPlayer[], fuori: string | undefined, club?: Club): RosterPlayer {
   const w = has(club, "att_bomber") ? [75, 20, 5] : has(club, "att_falso9") ? [45, 45, 10] : [60, 30, 10];
   const group = rng.weighted([{ weight: w[0] }, { weight: w[1] }, { weight: w[2] }]);
   const ruolo = (["ATT", "CEN", "DIF"] as const)[group];
@@ -85,7 +85,7 @@ function pickScorer(rng: Rng, roster: RosterPlayer[], fuori: string | undefined,
 
 export const ASSIST_RATE = 0.7;
 /** Ultimo passaggio: centrocampisti 45%, attaccanti 35%, difensori 20%; fuoriclasse peso doppio; mai il marcatore. */
-function pickAssist(rng: Rng, roster: RosterPlayer[], scorer: string, fuori: string | undefined, club?: Club): RosterPlayer | null {
+export function pickAssist(rng: Rng, roster: RosterPlayer[], scorer: string, fuori: string | undefined, club?: Club): RosterPlayer | null {
   const W = has(club, "att_falso9") ? { CEN: 60, ATT: 25, DIF: 15, POR: 0 } : { CEN: 45, ATT: 35, DIF: 20, POR: 0 };
   const fw = has(club, "marchio_assist") ? 3 : 2;
   const pool = roster.filter((p) => p.name !== scorer && p.ruolo !== "POR");
@@ -95,7 +95,7 @@ function pickAssist(rng: Rng, roster: RosterPlayer[], scorer: string, fuori: str
   return ws[rng.weighted(ws)].p;
 }
 
-function pickSchema(rng: Rng, t: TeamCtx, r: Ratings, scorer: RosterPlayer, isGoal: boolean): string {
+export function pickSchema(rng: Rng, t: TeamCtx, r: Ratings, scorer: RosterPlayer, isGoal: boolean): string {
   if (isGoal && rng.chance(0.08)) return "rigore";
   const wide = ["4-3-3", "3-4-3", "4-4-2", "3-5-2", "5-3-2"].includes(t.choices.modulo);
   const opts = [
@@ -163,6 +163,15 @@ export function simulateMatch(home: TeamCtx, away: TeamCtx, matchday: number, se
       }
     }
   }
+  return finishMatch(seed, events, home, away, sh.r, sa.r, [xh, xa], [teams.home.goals, teams.away.goals], rng);
+}
+
+
+/** Ordina gli eventi, aggiunge assist, punteggio progressivo, highlights e statistiche. */
+export function finishMatch(seed: string, events: MatchEvent[], home: TeamCtx, away: TeamCtx, rH: Ratings, rA: Ratings, xg: [number, number], goals: [number, number], rng: Rng): MatchResult {
+  const teams = { home: { t: home }, away: { t: away } };
+  const sh = { r: rH }, sa = { r: rA };
+  const [xh, xa] = xg;
   events.sort((a, b) => a.minute - b.minute);
   // Assist con un generatore separato: non altera risultati e marcatori già tarati.
   const arng = makeRng(seed + ":assist");
@@ -185,5 +194,5 @@ export function simulateMatch(home: TeamCtx, away: TeamCtx, matchday: number, se
   for (const e of rest) { if (highlights.length >= 8) break; if (e.type === "parata" || highlights.length < 5) highlights.push(e); }
   highlights.sort((x, y) => x.minute - y.minute);
   const stats = matchStats(events, sh.r.cen, sa.r.cen, home.choices.atteggiamento, away.choices.atteggiamento, rng);
-  return { homeGoals: teams.home.goals, awayGoals: teams.away.goals, xg: [Math.round(xh * 100) / 100, Math.round(xa * 100) / 100], events, highlights: highlights.slice(0, Math.max(8, must.length)), stats };
+  return { homeGoals: goals[0], awayGoals: goals[1], xg: [Math.round(xh * 100) / 100, Math.round(xa * 100) / 100], events, highlights: highlights.slice(0, Math.max(8, must.length)), stats };
 }
