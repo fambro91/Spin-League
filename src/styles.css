@@ -579,3 +579,7 @@ tr.zone-down td:first-child { box-shadow: inset 4px 0 0 var(--scarf); }
 .pc-nick { font-family: var(--display); font-weight: 800; color: var(--amber); font-size: 17px; letter-spacing: 0.03em; }
 .pc-traitlist { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 4px; font-size: 13px; position: relative; z-index: 1; }
 .pc-traitlist li { background: rgba(0,0,0,0.28); border-radius: 8px; padding: 5px 8px; }
+.bonus-sum { background: rgba(0,0,0,0.25); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+.bs-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 15px; }
+.bs-row.tot { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 6px; font-family: var(--display); font-size: 20px; }
+.bs-row.tot b { color: var(--amber); }

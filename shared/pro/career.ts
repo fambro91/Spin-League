@@ -47,8 +47,8 @@ export function fx(p: Pro): Required<TraitFx> {
   return out;
 }
 
-export type Stats = { apps: number; starts: number; minutes: number; goals: number; assists: number; rSum: number; rN: number; cs: number; yellow: number; red: number; injuredMatches: number; yApps?: number; yGoals?: number; yAssists?: number };
-const emptyStats = (): Stats => ({ apps: 0, starts: 0, minutes: 0, goals: 0, assists: 0, rSum: 0, rN: 0, cs: 0, yellow: 0, red: 0, injuredMatches: 0, yApps: 0, yGoals: 0, yAssists: 0 });
+export type Stats = { apps: number; starts: number; minutes: number; goals: number; assists: number; rSum: number; rN: number; cs: number; yellow: number; red: number; injuredMatches: number; yApps?: number; yGoals?: number; yAssists?: number; saves?: number; rec?: number; kp?: number };
+const emptyStats = (): Stats => ({ apps: 0, starts: 0, minutes: 0, goals: 0, assists: 0, rSum: 0, rN: 0, cs: 0, yellow: 0, red: 0, injuredMatches: 0, yApps: 0, yGoals: 0, yAssists: 0, saves: 0, rec: 0, kp: 0 });
 
 export type Fixture = { round: number; home: string; away: string; hg?: number; ag?: number; me?: { min: number; g: number; a: number; r: number } };
 export type Row = { id: string; name: string; pt: number; g: number; gf: number; gs: number };
@@ -87,7 +87,7 @@ export type ProState = {
   // fine stagione
   report: any | null; offers: Offer[];
   history: SeasonRec[];
-  trophies: { league: number; cl: number; ballon: number; topScorer: number; caps: number; intlGoals: number; intl: string[]; cups: string[] };
+  trophies: { league: number; cl: number; ballon: number; topScorer: number; caps: number; intlGoals: number; intl: string[]; cups: string[]; roleAward?: number };
   news: string[];
 };
 
@@ -137,6 +137,7 @@ export function spinPro(s: ProState, rng: Rng): { index: number; label: string; 
   const unlock: string[] = [];
   if (s.phase === "creation") {
     const d = s.creation.draft;
+    const fitBefore = fitBonus(d);
     switch (w.id) {
       case "nazione": d.nation = seg.data; break;
       case "ruolo": d.role = seg.data; break;
@@ -163,6 +164,7 @@ export function spinPro(s: ProState, rng: Rng): { index: number; label: string; 
       default: (d.traits ??= []).push(seg.data);
     }
     if (w.special) { const info = traitInfo(d.traits![d.traits!.length - 1]); note = info?.desc; }
+    else note = effectNote(w.id, seg.data, d, s, fitBefore);
     // sblocchi: archetipi dopo il talento
     if (w.id === "talento") {
       if (seg.data >= 66) unlock.push("sp_fenomeno");
@@ -179,9 +181,10 @@ export function spinPro(s: ProState, rng: Rng): { index: number; label: string; 
   switch (w.id) {
     case "ritiro":
       s.form = seg.data;
-      if (seg.data < 0) { s.injury = 2; note = "Salti le prime 2 giornate"; } else note = seg.data > 0 ? `Forma +${seg.data}` : "Partenza in salita";
+      if (seg.data <= -2) { s.injury = 2; note = "Forma −2 e salti le prime 2 giornate"; }
+      else note = seg.data > 0 ? `Forma +${seg.data}: voti e gol più alti a inizio stagione` : seg.data < 0 ? `Forma ${seg.data}: partenza in salita` : "Forma normale";
       break;
-    case "obiettivo": s.goal = { label: seg.label, ...seg.data }; note = "La società ti valuterà su questo."; break;
+    case "obiettivo": s.goal = { label: seg.label, ...seg.data }; note = "Se lo centri: crescita extra a fine anno"; break;
     case "torneo": {
       const t = seg.data as string;
       const nat = NATION_BY_ID.get(s.p.nation)!;
@@ -199,12 +202,13 @@ export function spinPro(s: ProState, rng: Rng): { index: number; label: string; 
 /** Valutazione iniziale: talento + quanto il fisico si adatta al ruolo + tratti. */
 export function fitBonus(d: Partial<Pro>): number {
   let f = 0;
-  const h = d.height ?? 180, sp = d.speed ?? 3, pw = d.power ?? 3, st = d.stamina ?? 3;
+  // ogni caratteristica conta solo quando è già uscita dalla ruota
+  const h = d.height, sp = d.speed, pw = d.power, st = d.stamina;
   const wide = ["Terzino", "Terzino offensivo", "Quinto di fascia", "Esterno di centrocampo", "Ala", "Ala invertita"].includes(d.sub ?? "");
-  if (d.role === "POR") f += h >= 189 ? 2 : h >= 185 ? 1 : h <= 180 ? -2 : 0;
-  if (d.role === "DIF") f += (h >= 188 ? 1 : h <= 175 ? -1 : 0) + (pw >= 4 ? 1 : pw <= 1 ? -1 : 0) + (wide && sp >= 4 ? 1 : 0);
-  if (d.role === "CEN") f += (st >= 4 ? 1 : st <= 1 ? -1 : 0) + (["Mediano", "Box to box"].includes(d.sub ?? "") && pw >= 4 ? 1 : 0) + (wide && sp >= 4 ? 1 : 0);
-  if (d.role === "ATT") f += (sp >= 4 ? 1 : sp <= 2 ? -1 : 0) + (["Prima punta", "Attaccante d'area"].includes(d.sub ?? "") && (h >= 186 || pw >= 4) ? 1 : 0) + (wide && sp >= 5 ? 1 : 0);
+  if (d.role === "POR" && h != null) f += h >= 189 ? 2 : h >= 185 ? 1 : h <= 180 ? -2 : 0;
+  if (d.role === "DIF") f += (h == null ? 0 : h >= 188 ? 1 : h <= 175 ? -1 : 0) + (pw == null ? 0 : pw >= 4 ? 1 : pw <= 1 ? -1 : 0) + (wide && (sp ?? 0) >= 4 ? 1 : 0);
+  if (d.role === "CEN") f += (st == null ? 0 : st >= 4 ? 1 : st <= 1 ? -1 : 0) + (["Mediano", "Box to box"].includes(d.sub ?? "") && (pw ?? 0) >= 4 ? 1 : 0) + (wide && (sp ?? 0) >= 4 ? 1 : 0);
+  if (d.role === "ATT") f += (sp == null ? 0 : sp >= 4 ? 1 : sp <= 2 ? -1 : 0) + (["Prima punta", "Attaccante d'area"].includes(d.sub ?? "") && ((h ?? 0) >= 186 || (pw ?? 0) >= 4) ? 1 : 0) + (wide && (sp ?? 0) >= 5 ? 1 : 0);
   if (d.foot === "ambidestro") f += 1;
   if (sp === 1 && d.role !== "POR") f -= 1;
   for (const t of d.traits ?? []) f += traitInfo(t)?.fx.ovr ?? 0;
@@ -316,8 +320,9 @@ export function shares(p: Pro): { g: number; a: number } {
 }
 
 function matchRating(rng: Rng, p: Pro, clubS: number, g: number, a: number, won: boolean, lost: boolean, conceded: number, form: number, morale: number): number {
-  let r = 6.0 + (p.ovr - clubS) * 0.03 + g * 0.8 + a * 0.45 + (won ? 0.3 : lost ? -0.3 : 0) + form * 0.15 + (morale - 60) / 200 + (rng.next() - 0.5) * 0.9;
-  if (p.role === "POR") r += conceded === 0 ? 0.6 : -0.3 * Math.max(0, conceded - 1);
+  const gw = p.role === "ATT" ? 0.8 : 1.0, aw = p.role === "CEN" ? 0.55 : 0.45;
+  let r = 6.0 + (p.ovr - clubS) * 0.03 + g * gw + a * aw + (won ? 0.3 : lost ? -0.3 : 0) + form * 0.15 + (morale - 60) / 200 + (rng.next() - 0.5) * 0.9;
+  if (p.role === "POR") r += 0.15 + (conceded === 0 ? 0.6 : -0.3 * Math.max(0, conceded - 1));
   if (p.role === "DIF") r += conceded === 0 ? 0.35 : -0.15 * Math.max(0, conceded - 1);
   const f = fx(p);
   r += f.r;
@@ -361,8 +366,16 @@ function playFixture(s: ProState, f: Fixture, rng: Rng) {
   const sh = shares(s.p), q = clampN(1 + (s.p.ovr - clubS) / 25 + s.form * 0.04, 0.4, 1.9) * (min / 90);
   let g = 0, a = 0;
   for (let i = 0; i < gUs; i++) { if (rng.chance(sh.g * q)) g++; else if (rng.chance(sh.a * q * 0.85)) a++; }
-  const r = matchRating(rng, s.p, clubS, g, a, gUs > gThem, gUs < gThem, gThem, s.form, s.morale);
+  // statistiche di ruolo: parate, recuperi, passaggi chiave
+  const role = s.p.role, qual = clampN(1 + (s.p.ovr - clubS) / 30, 0.6, 1.6) * (min / 90);
+  const saves = role === "POR" ? poisson(rng, xg(them, us, !mineH) * 2.3 * qual) : 0;
+  const rec = role === "DIF" || ["Mediano", "Box to box", "Metodista", "Regista"].includes(s.p.sub) ? poisson(rng, (role === "DIF" ? 4.5 : 3.5) * qual) : 0;
+  const kp = role === "CEN" || ["Ala", "Ala invertita", "Falso nove", "Trequartista"].includes(s.p.sub) ? poisson(rng, (0.6 + sh.a * 7) * qual) : 0;
+  // bonus di ruolo a media zero: premia chi fa più del normale nel suo ruolo
+  const roleBonus = role === "POR" ? (saves - 2.4) * 0.12 : role === "DIF" ? (rec - 4.5 * qual) * 0.08 : role === "CEN" ? (kp - 1.5 * qual) * 0.1 + (rec ? (rec - 3.5 * qual) * 0.04 : 0) : (kp - qual) * 0.04;
+  const r = clampN(Math.round((matchRating(rng, s.p, clubS, g, a, gUs > gThem, gUs < gThem, gThem, s.form, s.morale) + roleBonus) * 2) / 2, 4, 10);
   const st = s.stats;
+  st.saves = (st.saves ?? 0) + saves; st.rec = (st.rec ?? 0) + rec; st.kp = (st.kp ?? 0) + kp;
   st.apps++; if (min === 90) st.starts++; st.minutes += min; st.goals += g; st.assists += a; st.rSum += r; st.rN++;
   if (gThem === 0 && min >= 60) st.cs++;
   const pf = fx(s.p);
@@ -704,10 +717,21 @@ export function endSeason(s: ProState, rng: Rng) {
   // premi individuali
   const st = s.stats, avg = st.rN ? r1(st.rSum / st.rN) : 0;
   const topRival = Math.round((LEAGUES[league].stars >= 4 ? 21 : 18) + rng.next() * 8);
-  const topScorer = st.goals > topRival;
+  const role = s.p.role;
+  const topScorer = role !== "POR" && role !== "DIF" && st.goals > topRival;
   if (topScorer) { trophies.push(`Capocannoniere ${lname}`); s.trophies.topScorer++; }
-  const score = s.p.ovr * 1.4 + st.goals * 0.6 + st.assists * 0.35 + avg * 5 + (pos === 1 ? 6 : 0) + (clRound === "Vincitore" ? 12 : clRound === "Finale" ? 6 : 0) + (topScorer ? 4 : 0) + LEAGUES[league].stars * 2;
-  const rivals = [203, 197, 192, 188, 185, 182, 179, 176, 173, 170].map((x) => x + (rng.next() - 0.5) * 14);
+  // premio del ruolo: il metro cambia da ruolo a ruolo
+  let roleAward: { name: string; won: boolean; rival: string } | null = null;
+  if (role === "POR") { const rc = Math.round(10 + rng.next() * 6); roleAward = { name: `Miglior portiere ${lname}`, won: st.apps >= 25 && st.cs > rc && avg >= 6.5, rival: `${rc} porte inviolate` }; }
+  if (role === "DIF") { const rv = r1(6.95 + rng.next() * 0.3); roleAward = { name: `Miglior difensore ${lname}`, won: st.apps >= 25 && avg > rv, rival: `voto medio ${String(rv).replace(".", ",")}` }; }
+  if (role === "CEN") { const ra = Math.round(9 + rng.next() * 6); roleAward = { name: `Re degli assist ${lname}`, won: st.apps >= 20 && st.assists > ra, rival: `${ra} assist` }; }
+  if (roleAward?.won) { trophies.push(roleAward.name); s.trophies.roleAward = (s.trophies.roleAward ?? 0) + 1; }
+  const prod = role === "ATT" ? st.goals * 0.6 + st.assists * 0.35
+    : role === "CEN" ? st.goals * 0.55 + st.assists * 0.55 + (st.kp ?? 0) * 0.05 + 1
+    : role === "DIF" ? st.cs * 0.45 + (st.rec ?? 0) * 0.02 + st.goals * 0.5 + st.assists * 0.3
+    : st.cs * 0.75 + (st.saves ?? 0) * 0.04;
+  const score = s.p.ovr * 1.4 + prod + avg * (role === "ATT" ? 5 : role === "CEN" ? 5.5 : 6) + (pos === 1 ? 6 : 0) + (clRound === "Vincitore" ? 12 : clRound === "Finale" ? 6 : 0) + (topScorer || roleAward?.won ? 4 : 0) + LEAGUES[league].stars * 2;
+  const rivals = [212, 206, 201, 197, 193, 190, 187, 184, 181, 178].map((x) => x + (rng.next() - 0.5) * 14);
   let ballonRank = rivals.filter((x) => x > score).length + 1;
   if (ballonRank > 10) ballonRank = 11 + Math.floor((Math.min(...rivals) - score) / 2.5);
   if (st.apps < 12) ballonRank = 99;
@@ -726,7 +750,8 @@ export function endSeason(s: ProState, rng: Rng) {
   // obiettivo personale
   const g = s.goal;
   const val = !g ? 0 : g.kind === "gol" ? st.goals : g.kind === "assist" ? st.assists : g.kind === "ga" ? st.goals + st.assists : g.kind === "voto" ? avg : g.kind === "pres" ? st.apps
-    : g.kind === "ygol" ? (st.yGoals ?? 0) + st.goals : g.kind === "yapps" ? (st.yApps ?? 0) + st.apps : g.kind === "cs" ? st.cs : 0;
+    : g.kind === "ygol" ? (st.yGoals ?? 0) + st.goals : g.kind === "yapps" ? (st.yApps ?? 0) + st.apps : g.kind === "cs" ? st.cs
+    : g.kind === "saves" ? st.saves ?? 0 : g.kind === "rec" ? st.rec ?? 0 : g.kind === "kp" ? st.kp ?? 0 : 0;
   const goalOk = !!g && (g.kind === "pos" ? pos <= g.n : g.kind === "maxyellow" ? st.yellow <= g.n && st.apps >= 10 : val >= g.n);
 
   // crescita
@@ -758,7 +783,7 @@ export function endSeason(s: ProState, rng: Rng) {
   s.lastTables = tables;
   s.report = {
     year: s.year, age, pos, n: myTable.length, league: lname, clRound: inCL ? clRound || "Ottavi" : null, trophies, avg, stats: { ...st },
-    ovrBefore: before, ovrAfter: s.p.ovr, ballonRank, topRival, natLine, goal: g?.label ?? null, goalOk, notes, tables,
+    ovrBefore: before, ovrAfter: s.p.ovr, ballonRank, topRival, roleAward, natLine, goal: g?.label ?? null, goalOk, notes, tables,
   };
   s.contractYears--;
   s.phase = "end";
@@ -872,7 +897,62 @@ export function careerTotals(s: ProState) {
   for (const h of s.history) { t.apps += h.stats.apps; t.goals += h.stats.goals; t.assists += h.stats.assists; t.cs += h.stats.cs; t.rSum += h.stats.rSum; t.rN += h.stats.rN; }
   const peak = Math.max(...s.history.map((h) => h.ovr), s.p?.ovr ?? 0);
   const clubs = [...new Set(s.history.map((h) => h.clubId))];
-  const legend = Math.round(peak * 0.6 + s.trophies.league * 4 + s.trophies.cl * 8 + s.trophies.ballon * 15 + s.trophies.topScorer * 3 + Math.min(30, t.goals / 12) + Math.min(10, s.trophies.caps / 10) + s.trophies.cups.length * 8);
+  const legend = Math.round(peak * 0.6 + s.trophies.league * 4 + s.trophies.cl * 8 + s.trophies.ballon * 15 + s.trophies.topScorer * 3 + (s.trophies.roleAward ?? 0) * 3 + Math.min(30, s.p.role === "ATT" ? t.goals / 12 : s.p.role === "CEN" ? (t.goals + t.assists) / 14 : s.p.role === "DIF" ? t.cs / 8 + t.goals / 3 : t.cs / 7) + Math.min(10, s.trophies.caps / 10) + s.trophies.cups.length * 8);
   const verdict = legend >= 110 ? "Leggenda del calcio" : legend >= 90 ? "Campione" : legend >= 72 ? "Ottima carriera" : legend >= 58 ? "Onesto professionista" : "Carriera di provincia";
   return { ...t, avg: t.rN ? r1(t.rSum / t.rN) : 0, peak, clubs, legend, verdict };
+}
+
+
+/* ---------------- effetti mostrati dopo ogni ruota ---------------- */
+
+const SUB_NOTE: Record<string, string> = {
+  "Prima punta": "Tanti gol, pochi assist", "Seconda punta": "Gol e assist", "Falso nove": "Gol e tanti assist", Ala: "Tanti assist, qualche gol",
+  "Centravanti di manovra": "Gol e gioco per i compagni", "Ala invertita": "Rientra e calcia: gol e assist", "Attaccante d'area": "Il massimo dei gol, pochi assist", "Punta mobile": "Gol e assist, sempre in movimento",
+  Regista: "Assist e passaggi chiave", Mezzala: "Un po' di tutto", Trequartista: "Assist e gol, voti legati alla fantasia", Mediano: "Recuperi, pochi gol, più cartellini",
+  "Box to box": "Gol, recuperi e corsa", Incursore: "Gol in inserimento", "Esterno di centrocampo": "Assist dalla fascia", Metodista: "Passaggi chiave e recuperi",
+  Centrale: "Voti legati a porte inviolate e recuperi", Terzino: "Recuperi e qualche assist", "Terzino offensivo": "Assist dalla fascia", Stopper: "Recuperi, più cartellini",
+  Libero: "Recuperi e impostazione", Braccetto: "Recuperi e qualche gol", "Quinto di fascia": "Assist e corsa",
+  "Classico tra i pali": "Parate e porte inviolate", "Portiere-libero": "Parate e qualche rilancio decisivo", "Portiere acrobatico": "Parate spettacolari", "Comandante della difesa": "Porte inviolate", "Portiere moderno": "Parate e gioco coi piedi",
+};
+const SPEC_NOTE: Record<string, string> = {
+  "Colpo di testa": "Più gol (e più forte nei momenti di testa)", "Rapace d'area": "Più gol", "Tiro a giro": "Più gol, rigori più sicuri", "Tiro da fuori": "Più gol da lontano",
+  Inserimenti: "Più gol", "Tiro al volo": "Più gol", Rigori: "Più gol, rigori più sicuri", Punizioni: "Più gol da fermo", Dribbling: "Più gol e assist", Velocità: "Più gol e assist",
+  Filtranti: "Più assist", "Visione di gioco": "Più assist", "Lanci lunghi": "Più assist", "Spinta sulla fascia": "Più assist", Cross: "Più assist", "Gioco aereo": "Più gol su calcio d'angolo",
+  Impostazione: "Qualche assist in più", "Piedi buoni": "Qualche assist in più", "Recupero palla": "Momenti difensivi più facili", Anticipo: "Momenti difensivi più facili",
+  Marcatura: "Momenti difensivi più facili", Scivolata: "Recuperi, ma rischio cartellino", Leadership: "Momenti difensivi più facili",
+  "Para-rigori": "Più rigori parati", Riflessi: "Parate più facili nei momenti decisivi", "Uscite alte": "Uscite più sicure", Rilancio: "Più assist da portiere",
+  Posizionamento: "Parate più facili", "Uno contro uno": "Più forte nell'uno contro uno", "Comando della difesa": "Voti più costanti",
+};
+const CHAR_NOTE = (c: string) => ({
+  Professionista: "Cresci ancora dopo i 29 anni", Leader: "Rapporto col mister +5, rigori più sicuri", "Testa calda": "Cartellini ×1,8, voti un po' più alti",
+  "Genio e sregolatezza": "Voti molto più estremi", "Uomo spogliatoio": "Morale +8", Trascinatore: "Morale +5, voti un po' più alti",
+  Timido: "Voti un po' più bassi, peggio nei momenti caldi", Ribelle: "Rapporto col mister −10", Perfezionista: "Cresci più in fretta", Istrionico: "Morale +5, voti più estremi",
+} as Record<string, string>)[c] ?? "";
+
+function effectNote(id: string, data: any, d: Partial<Pro>, s: ProState, fitBefore: number): string | undefined {
+  const fitNow = fitBonus(d), dv = fitNow - fitBefore;
+  const val = dv ? `Valutazione ${dv > 0 ? "+" : ""}${dv}` : "";
+  const join = (...x: (string | undefined | false)[]) => x.filter(Boolean).join(" · ") || undefined;
+  switch (id) {
+    case "nazione": { const n = NATION_BY_ID.get(data)!; return `${n.league ? `Cresci in ${LEAGUES[n.league].name}` : "Accademia all'estero"} · nazionale forza ${n.strength}`; }
+    case "ruolo": return ({ POR: "Ti giudicheranno su parate e porte inviolate", DIF: "Ti giudicheranno su recuperi, porte inviolate e voto", CEN: "Ti giudicheranno su assist, passaggi chiave e voto", ATT: "Ti giudicheranno sui gol" } as Record<string, string>)[data];
+    case "tipo": return join(SUB_NOTE[data], val);
+    case "spec": return SPEC_NOTE[data] ?? "Bonus nei momenti decisivi";
+    case "piede": return data === "ambidestro" ? "Valutazione +1" : "Nessun effetto";
+    case "altezza": return join(val || "Nessun effetto sulla valutazione", (d.height ?? 0) >= 188 && d.role !== "POR" ? "più forte di testa" : (d.height ?? 200) <= 172 ? "più agile" : "");
+    case "velocita": return join(val || "Nessun effetto sulla valutazione", data >= 5 ? "più gol in contropiede, cala dopo i 29 anni" : data <= 2 ? "momenti in velocità più difficili" : "");
+    case "resistenza": return join(val, `Infortuni ×${String([2, 1.4, 1, 0.75, 0.5][data - 1]).replace(".", ",")}`);
+    case "forza": return val || "Nessun effetto sulla valutazione";
+    case "carattere": return join(CHAR_NOTE(data), val);
+    case "talento": return `Valutazione di partenza: ${data} (+ fisico e ruolo ${fitNow >= 0 ? "+" : ""}${fitNow})`;
+    case "idolo": case "agente": return traitInfo(data)?.desc;
+    case "soprannome": case "esultanza": return "Solo estetica: compare sulla tua carta";
+    case "vivaio": {
+      const c = CLUB_BY_ID.get(data)!;
+      const ovr = (d.talent ?? 58) + fitNow;
+      const st = statusFor(ovr, s.strengths[c.id], 17);
+      return `${LEAGUES[c.league].name} · forza ${s.strengths[c.id]} · partirai da: ${STATUS_LABEL[st]}`;
+    }
+  }
+  return undefined;
 }

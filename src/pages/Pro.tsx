@@ -201,10 +201,29 @@ function NameStep({ s, mutate }: StepProps) {
       <div className="panel">
         <label className="field"><span>Nome e cognome</span><input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Giacomo Rossi" maxLength={28} /></label>
         <label className="field"><span>Numero di maglia</span><input type="number" min={1} max={99} value={num} onChange={(e) => setNum(Number(e.target.value))} /></label>
+        <BonusSummary s={preview} />
         <p className="small muted">Valore di mercato: {money(marketValue(preview.p))}. Firmi il primo contratto con il settore giovanile del {club(s.clubId)!.name}.</p>
         <button className="btn block pulse" disabled={name.trim().length < 3} onClick={() => mutate((c) => finishCreation(c, name, num))}>Firma il primo contratto</button>
       </div>
     </>
+  );
+}
+
+/** Riepilogo: da dove viene la valutazione di partenza. */
+function BonusSummary({ s }: { s: ProState }) {
+  const p = s.p;
+  const traitOvr = p.traits.reduce((a, t) => a + (traitInfo(t)?.fx.ovr ?? 0), 0);
+  const physical = p.ovr - p.talent - traitOvr;
+  const effects = p.traits.map((t) => traitInfo(t)).filter((i) => i && i.desc);
+  return (
+    <div className="bonus-sum">
+      <div className="bs-row"><span>Talento</span><b>{p.talent}</b></div>
+      <div className="bs-row"><span>Fisico, piede e ruolo</span><b>{physical >= 0 ? "+" : ""}{physical}</b></div>
+      {traitOvr !== 0 && <div className="bs-row"><span>Tratti</span><b>{traitOvr > 0 ? "+" : ""}{traitOvr}</b></div>}
+      <div className="bs-row tot"><span>Valutazione di partenza</span><b>{p.ovr}</b></div>
+      {effects.length > 0 && <div className="small muted" style={{ marginTop: 6 }}>Effetti attivi: {effects.map((i) => `${i!.label} (${i!.desc.toLowerCase()})`).join(" · ")}</div>}
+      <div className="small muted" style={{ marginTop: 4 }}>Il potenziale resta un segreto: lo scoprirai stagione dopo stagione.</div>
+    </div>
   );
 }
 
@@ -241,9 +260,14 @@ function StatGrid({ s }: { s: ProState }) {
       <div><b>{st.yAssists ?? 0}</b><span>Assist Primavera</span></div><div><b>{st.apps}</b><span>In prima squadra</span></div>
     </div>
   );
+  const v: [string, string | number] = ["Voto medio", avg ? dec(avg) : "—"];
   const items: [string, string | number][] = s.p.role === "POR"
-    ? [["Presenze", st.apps], ["Porte inviolate", st.cs], ["Voto medio", avg ? dec(avg) : "—"], ["Gialli", st.yellow]]
-    : [["Presenze", st.apps], ["Gol", st.goals], ["Assist", st.assists], ["Voto medio", avg ? dec(avg) : "—"]];
+    ? [["Presenze", st.apps], ["Porte inviolate", st.cs], ["Parate", st.saves ?? 0], v]
+    : s.p.role === "DIF"
+      ? [["Presenze", st.apps], ["Recuperi", st.rec ?? 0], ["Porte inviolate", st.cs], v, ["Gol + assist", st.goals + st.assists]]
+      : s.p.role === "CEN"
+        ? [["Presenze", st.apps], ["Assist", st.assists], ["Passaggi chiave", st.kp ?? 0], ["Gol", st.goals], v]
+        : [["Presenze", st.apps], ["Gol", st.goals], ["Assist", st.assists], v];
   return <div className="stat-grid">{items.map(([k, v]) => <div key={k}><b>{v}</b><span>{k}</span></div>)}</div>;
 }
 
@@ -409,7 +433,8 @@ function EndStep({ s, mutate }: StepProps) {
           <div className="r"><span>Obiettivo «{r.goal ?? "—"}»</span><span>{r.goalOk ? "✓ centrato" : "✗ mancato"}</span></div>
           <div className="r"><span>Valutazione</span><span><strong>{r.ovrBefore} → {r.ovrAfter}</strong> ({delta >= 0 ? "+" : ""}{delta})</span></div>
           <div className="r"><span>Pallone d'Oro</span><span>{r.ballonRank <= 30 ? `${r.ballonRank}° posto` : "fuori dai 30"}</span></div>
-          <div className="r"><span>Capocannoniere del campionato</span><span>{r.topRival} gol</span></div>
+          {s.p.role === "ATT" && <div className="r"><span>Capocannoniere del campionato</span><span>{r.topRival} gol</span></div>}
+          {r.roleAward && <div className="r"><span>{r.roleAward.name.replace(/ (Premier League|LaLiga|Serie A|Bundesliga|Ligue 1|Eredivisie|Liga Portugal|.+)$/, "")}</span><span>{r.roleAward.won ? "🏆 tuo!" : `vince chi ha ${r.roleAward.rival}`}</span></div>}
         </div>
         {r.natLine && <p className="small" style={{ marginTop: 8 }}>{r.natLine}</p>}
         {r.notes?.map((n: string, i: number) => <p key={i} className="small muted">{n}</p>)}
@@ -497,7 +522,7 @@ function Palmares({ s }: { s: ProState }) {
               <div key={h.year} className="career-row">
                 <span className="cr-year">{String(h.year).slice(2)}/{String(h.year + 1).slice(2)}<small>{h.age}a</small></span>
                 <span className="cr-club">{crestOf(h.clubId, 26)}<span><strong>{club(h.clubId)?.name}</strong>{h.loan ? " (prestito)" : ""}<small>{LEAGUES[h.league].name} · {h.pos}° · {STATUS_LABEL[h.status]}</small></span></span>
-                <span className="cr-stats">{h.status === "giovanili" ? `Primavera ${h.stats.yApps ?? 0}p ${h.stats.yGoals ?? 0}g · ` : ""}{h.stats.apps}p · {s.p.role === "POR" ? `${h.stats.cs} cs` : `${h.stats.goals}g ${h.stats.assists}a`} · {h.avg ? dec(h.avg) : "—"}<small>ovr {h.ovr}{h.trophies.length ? ` · ${h.trophies.join(", ")}` : ""}</small></span>
+                <span className="cr-stats">{h.status === "giovanili" ? `Primavera ${h.stats.yApps ?? 0}p ${h.stats.yGoals ?? 0}g · ` : ""}{h.stats.apps}p · {s.p.role === "POR" ? `${h.stats.cs} inviolate · ${h.stats.saves ?? 0} parate` : s.p.role === "DIF" ? `${h.stats.rec ?? 0} recuperi · ${h.stats.cs} inviolate` : s.p.role === "CEN" ? `${h.stats.assists}a ${h.stats.goals}g · ${h.stats.kp ?? 0} pass. chiave` : `${h.stats.goals}g ${h.stats.assists}a`} · {h.avg ? dec(h.avg) : "—"}<small>ovr {h.ovr}{h.trophies.length ? ` · ${h.trophies.join(", ")}` : ""}</small></span>
               </div>
             ))}
           </div>

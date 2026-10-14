@@ -7,6 +7,7 @@ const N = Number(process.argv[2] ?? 300);
 const verbose = process.argv[3] === "v";
 const agg = { retireAge: 0, peak: 0, goals: 0, ballon: 0, cl: 0, league: 0, clubs: 0, bigClub: 0, seasons: 0 };
 const peakBuckets: Record<string, number> = {};
+const byRole: Record<string, { n: number; ballon: number; avg: number; awards: number; peak: number }> = {};
 for (let i = 0; i < N; i++) {
   const rng = makeRng("pro" + i);
   const s = newPro();
@@ -27,6 +28,8 @@ for (let i = 0; i < N; i++) {
     }
   }
   const t = careerTotals(s);
+  const br = (byRole[s.p.role] ??= { n: 0, ballon: 0, avg: 0, awards: 0, peak: 0 });
+  br.n++; br.ballon += s.trophies.ballon; br.avg += t.avg; br.awards += (s.trophies.roleAward ?? 0) + s.trophies.topScorer; br.peak += t.peak;
   agg.retireAge += s.p.age; agg.peak += t.peak; agg.goals += t.goals; agg.ballon += s.trophies.ballon; agg.cl += s.trophies.cl; agg.league += s.trophies.league; agg.clubs += t.clubs.length; agg.seasons += s.history.length;
   if (s.history.some((h) => (CLUB_BY_ID.get(h.clubId)!.strength >= 84))) agg.bigClub++;
   const b = t.peak >= 88 ? "88+" : t.peak >= 82 ? "82-87" : t.peak >= 76 ? "76-81" : t.peak >= 70 ? "70-75" : "<70";
@@ -40,3 +43,4 @@ const m = (x: number) => (x / N).toFixed(2);
 console.log(`\nCarriere: ${N} · ritiro medio ${m(agg.retireAge)} anni · stagioni ${m(agg.seasons)} · picco medio ${m(agg.peak)} · gol ${m(agg.goals)} · club ${m(agg.clubs)}`);
 console.log(`Palloni d'Oro ${m(agg.ballon)} · Champions ${m(agg.cl)} · campionati ${m(agg.league)} · ha giocato in una big: ${(100 * agg.bigClub / N).toFixed(0)}%`);
 console.log("Picchi:", Object.entries(peakBuckets).map(([k, v]) => `${k}: ${(100 * v / N).toFixed(0)}%`).join("  "));
+for (const [r, b] of Object.entries(byRole)) console.log(`${r}: ${b.n} carriere · voto medio ${(b.avg / b.n).toFixed(2)} · picco ${(b.peak / b.n).toFixed(1)} · premi di ruolo ${(b.awards / b.n).toFixed(2)} · Palloni d'Oro ${(b.ballon / b.n).toFixed(2)}`);

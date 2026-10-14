@@ -250,12 +250,12 @@ export function goalWheel(role: Role, sub: string, youth = false): Wheel {
        ["15 tra gol e assist", 14, { kind: "ga", n: 15 }], ["8 assist", 10, { kind: "assist", n: 8 }], ["Voto medio 6,5", 12, { kind: "voto", n: 6.5 }], ["25 presenze", 12, { kind: "pres", n: 25 }], ["Squadra tra le prime 4", 8, { kind: "pos", n: 4 }]]
     : role === "CEN"
       ? [["6 assist", 14, { kind: "assist", n: 6 }], ["10 assist", 10, { kind: "assist", n: 10 }], ["5 gol", 12, { kind: "gol", n: 5 }], ["12 tra gol e assist", 12, { kind: "ga", n: 12 }],
-         ["Voto medio 6,5", 14, { kind: "voto", n: 6.5 }], ["Voto medio 7", 6, { kind: "voto", n: 7 }], ["30 presenze", 12, { kind: "pres", n: 30 }], ["Squadra tra le prime 4", 10, { kind: "pos", n: 4 }], ["Vincere il campionato", 4, { kind: "pos", n: 1 }]]
+         ["Voto medio 6,5", 14, { kind: "voto", n: 6.5 }], ["Voto medio 7", 6, { kind: "voto", n: 7 }], ["30 presenze", 12, { kind: "pres", n: 30 }], ["Squadra tra le prime 4", 10, { kind: "pos", n: 4 }], ["Vincere il campionato", 4, { kind: "pos", n: 1 }], ["40 passaggi chiave", 12, { kind: "kp", n: 40 }]]
       : role === "DIF"
         ? [["Voto medio 6,5", 16, { kind: "voto", n: 6.5 }], ["30 presenze", 14, { kind: "pres", n: 30 }], ["10 porte inviolate", 12, { kind: "cs", n: 10 }], [off ? "5 assist" : "3 gol", 14, off ? { kind: "assist", n: 5 } : { kind: "gol", n: 3 }],
-           [off ? "8 assist" : "5 gol", 8, off ? { kind: "assist", n: 8 } : { kind: "gol", n: 5 }], ["Voto medio 7", 6, { kind: "voto", n: 7 }], ["Squadra tra le prime 4", 10, { kind: "pos", n: 4 }], ["Meno di 6 gialli", 10, { kind: "maxyellow", n: 5 }], ["Miglior difesa: prime 3", 8, { kind: "pos", n: 3 }]]
+           [off ? "8 assist" : "5 gol", 8, off ? { kind: "assist", n: 8 } : { kind: "gol", n: 5 }], ["Voto medio 7", 6, { kind: "voto", n: 7 }], ["Squadra tra le prime 4", 10, { kind: "pos", n: 4 }], ["Meno di 6 gialli", 10, { kind: "maxyellow", n: 5 }], ["Miglior difesa: prime 3", 8, { kind: "pos", n: 3 }], ["120 recuperi", 12, { kind: "rec", n: 120 }]]
         : [["8 porte inviolate", 14, { kind: "cs", n: 8 }], ["12 porte inviolate", 10, { kind: "cs", n: 12 }], ["16 porte inviolate", 4, { kind: "cs", n: 16 }], ["Voto medio 6,5", 16, { kind: "voto", n: 6.5 }],
-           ["Voto medio 7", 6, { kind: "voto", n: 7 }], ["30 presenze", 16, { kind: "pres", n: 30 }], ["Squadra tra le prime 4", 10, { kind: "pos", n: 4 }], ["Vincere il campionato", 4, { kind: "pos", n: 1 }]];
+           ["Voto medio 7", 6, { kind: "voto", n: 7 }], ["30 presenze", 16, { kind: "pres", n: 30 }], ["Squadra tra le prime 4", 10, { kind: "pos", n: 4 }], ["Vincere il campionato", 4, { kind: "pos", n: 1 }], ["90 parate", 12, { kind: "saves", n: 90 }]];
   return W("obiettivo", "Obiettivo personale", "Su cosa ti giudicheranno quest'anno?", "🎯", "blue", segs);
 }
 
