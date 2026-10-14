@@ -576,3 +576,6 @@ tr.zone-down td:first-child { box-shadow: inset 4px 0 0 var(--scarf); }
 .cr-club > span { min-width: 0; }
 .cr-stats { text-align: right; font-weight: 700; }
 .legend .big { font-size: 40px; }
+.pc-nick { font-family: var(--display); font-weight: 800; color: var(--amber); font-size: 17px; letter-spacing: 0.03em; }
+.pc-traitlist { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 4px; font-size: 13px; position: relative; z-index: 1; }
+.pc-traitlist li { background: rgba(0,0,0,0.28); border-radius: 8px; padding: 5px 8px; }

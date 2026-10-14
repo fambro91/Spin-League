@@ -1,7 +1,7 @@
 // Carriera giocatore: stato, creazione, stagione (a blocchi), momenti, mercato, crescita, premi.
 import { makeRng, randomToken, type Rng } from "../rng";
-import { CLUBS, CLUB_BY_ID, CL_SPOTS, LEAGUES, NATION_BY_ID, TABLE_LEAGUES, clubsOf, type LeagueCode, type ProClub } from "./data";
-import { goalWheel, proWheel, SUMMER_WHEELS, TOURNAMENT_WHEEL, type Role } from "./wheels";
+import { CLUBS, CLUB_BY_ID, CL_SPOTS, CONF_CUP, LEAGUES, NATION_BY_ID, TABLE_LEAGUES, clubsOf, type LeagueCode, type ProClub } from "./data";
+import { archetypeUnlocks, goalWheel, proWheel, SCHOOLS, SUMMER_WHEELS, TOURNAMENT_WHEEL, TRAIT_INFO, type Role, type TraitFx } from "./wheels";
 import type { Wheel } from "../wheels";
 
 export const START_YEAR = 2026;
@@ -12,7 +12,40 @@ export type Pro = {
   name: string; number: number; nation: string; role: Role; sub: string; spec: string; foot: string;
   height: number; speed: number; stamina: number; power: number; character: string;
   talent: number; pot: number; ovr: number; age: number; traits: string[];
+  nickname?: string; celebration?: string;
 };
+
+/** Descrizione ed effetti di un tratto (comprese le scuole calcistiche nazionali). */
+export function traitInfo(t: string): { label: string; icon: string; desc: string; fx: TraitFx } | null {
+  if (t.startsWith("school_")) {
+    const [, nat, i] = t.split("_");
+    const sc = (SCHOOLS[nat] ?? SCHOOLS._)[Number(i) - 1];
+    return sc ? { label: sc[0], icon: "🏫", desc: sc[1], fx: sc[2] } : null;
+  }
+  return TRAIT_INFO[t] ?? null;
+}
+/** Somma (o prodotto, per i moltiplicatori) degli effetti di tutti i tratti e del carattere. */
+export function fx(p: Pro): Required<TraitFx> {
+  const out: Required<TraitFx> = { g: 0, a: 0, r: 0, ovr: 0, inj: 1, card: 1, grow: 0, age: 1, offers: 0, eff: 0, salary: 1, rel: 0, morale: 0, volatile: 0 };
+  for (const t of p.traits) {
+    const f = traitInfo(t)?.fx; if (!f) continue;
+    out.g += f.g ?? 0; out.a += f.a ?? 0; out.r += f.r ?? 0; out.ovr += f.ovr ?? 0; out.grow += f.grow ?? 0; out.offers += f.offers ?? 0; out.eff += f.eff ?? 0;
+    out.rel += f.rel ?? 0; out.morale += f.morale ?? 0; out.volatile += f.volatile ?? 0;
+    out.inj *= f.inj ?? 1; out.card *= f.card ?? 1; out.age *= f.age ?? 1; out.salary *= f.salary ?? 1;
+  }
+  switch (p.character) {
+    case "Perfezionista": out.grow += 0.4; break;
+    case "Testa calda": out.card *= 1.8; out.r += 0.05; break;
+    case "Genio e sregolatezza": out.volatile += 0.3; break;
+    case "Istrionico": out.volatile += 0.15; out.morale += 5; break;
+    case "Uomo spogliatoio": out.morale += 8; break;
+    case "Trascinatore": out.morale += 5; out.r += 0.05; break;
+    case "Leader": out.rel += 5; break;
+    case "Ribelle": out.rel -= 10; break;
+    case "Timido": out.r -= 0.05; break;
+  }
+  return out;
+}
 
 export type Stats = { apps: number; starts: number; minutes: number; goals: number; assists: number; rSum: number; rN: number; cs: number; yellow: number; red: number; injuredMatches: number; yApps?: number; yGoals?: number; yAssists?: number };
 const emptyStats = (): Stats => ({ apps: 0, starts: 0, minutes: 0, goals: 0, assists: 0, rSum: 0, rN: 0, cs: 0, yellow: 0, red: 0, injuredMatches: 0, yApps: 0, yGoals: 0, yAssists: 0 });
@@ -38,7 +71,7 @@ export type Clou = {
 };
 
 export type ProState = {
-  v: 1; id: string;
+  v: 2; id: string;
   phase: "creation" | "name" | "summer" | "season" | "moment" | "clou" | "end" | "offers" | "retired";
   creation: { queue: string[]; done: { wheel: string; label: string; note?: string }[]; draft: Partial<Pro> & { traitsTmp?: string[] } };
   p: Pro;
@@ -60,11 +93,22 @@ export type ProState = {
 
 /* ---------------- creazione ---------------- */
 
-const CREATION = ["nazione", "ruolo", "tipo", "spec", "piede", "altezza", "velocita", "resistenza", "forza", "carattere", "talento", "potenziale", "vivaio"];
+const CREATION = ["nazione", "ruolo", "tipo", "spec", "piede", "altezza", "velocita", "resistenza", "forza", "carattere", "talento", "idolo", "agente", "soprannome", "esultanza", "vivaio"];
+
+/** Le vecchie carriere (attributi su scala diversa) vengono convertite. */
+export function migratePro(s: any): ProState {
+  if (s && s.v === 1 && s.p) {
+    s.p.speed = [1, 3, 4, 6][Math.max(0, Math.min(3, s.p.speed - 1))];
+    s.p.stamina = [1, 3, 5][Math.max(0, Math.min(2, s.p.stamina - 1))];
+    s.p.power = [1, 3, 5][Math.max(0, Math.min(2, s.p.power - 1))];
+    s.v = 2;
+  }
+  return s;
+}
 
 export function newPro(): ProState {
   return {
-    v: 1, id: randomToken(8), phase: "creation",
+    v: 2, id: randomToken(8), phase: "creation",
     creation: { queue: [...CREATION], done: [], draft: { traits: [] } },
     p: null as unknown as Pro, clubId: "", contractYears: 3, salary: 0.1, status: "giovanili", rel: 50, morale: 60, form: 0,
     year: START_YEAR, season: 1, strengths: Object.fromEntries(CLUBS.map((c) => [c.id, c.strength])), lastTables: {},
@@ -80,7 +124,7 @@ export function currentWheel(s: ProState): Wheel | null {
   if (id === "obiettivo") return goalWheel(s.p.role, s.p.sub, s.status === "giovanili");
   if (id === "torneo") return TOURNAMENT_WHEEL(NATION_BY_ID.get(s.p.nation)!.strength);
   if (SUMMER_WHEELS[id]) return SUMMER_WHEELS[id];
-  return proWheel(id, { role: d.role as Role, nation: d.nation, sub: d.sub });
+  return proWheel(id, { role: (d.role ?? s.p?.role) as Role, nation: d.nation ?? s.p?.nation, sub: d.sub });
 }
 
 /** Gira la ruota corrente (creazione, estate o torneo). Ritorna indice, etichetta e nota. */
@@ -104,19 +148,27 @@ export function spinPro(s: ProState, rng: Rng): { index: number; label: string; 
       case "resistenza": d.stamina = seg.data; break;
       case "forza": d.power = seg.data; break;
       case "carattere": d.character = seg.data; break;
-      case "talento": d.talent = seg.data; break;
-      case "potenziale": d.pot = Math.max(seg.data, (d.talent ?? 60) + 8); break;
+      case "talento": {
+        d.talent = seg.data;
+        // il potenziale resta segreto: lo scopri solo giocando
+        const tier = [72, 78, 84, 88, 93][rng.weighted([{ weight: 18 }, { weight: 30 }, { weight: 28 }, { weight: 13 }, { weight: 5 }])];
+        d.pot = Math.max(tier + rng.int(-2, 2), seg.data + 8);
+        break;
+      }
+      case "idolo": case "agente": (d.traits ??= []).push(seg.data); break;
+      case "soprannome": d.nickname = seg.data; break;
+      case "esultanza": d.celebration = seg.data; break;
       case "vivaio": s.clubId = seg.data; break;
-      default: (d.traits ??= []).push(seg.data); note = undefined;
+      case "sp_scuola": (d.traits ??= []).push(`school_${d.nation ?? "_"}_${String(seg.data).split("_")[1]}`); break;
+      default: (d.traits ??= []).push(seg.data);
     }
-    // sblocchi
-    if (w.id === "forza") {
-      if (d.role === "ATT" && (d.height ?? 0) >= 186) unlock.push("sp_torre");
-      if ((d.speed ?? 0) >= 4 && (d.role === "ATT" || d.sub === "Terzino" || d.sub === "Mezzala")) unlock.push("sp_freccia");
-      if (d.role === "POR" && (d.height ?? 200) <= 184) unlock.push("sp_tascabile");
-      if (d.role === "DIF" && (d.height ?? 0) >= 190 && (d.power ?? 0) >= 2) unlock.push("sp_muro");
+    if (w.special) { const info = traitInfo(d.traits![d.traits!.length - 1]); note = info?.desc; }
+    // sblocchi: archetipi dopo il talento
+    if (w.id === "talento") {
+      if (seg.data >= 66) unlock.push("sp_fenomeno");
+      unlock.push(...archetypeUnlocks(d as any));
+      if ((d.nation && SCHOOLS[d.nation]) && d.character !== "Timido") unlock.push("sp_scuola");
     }
-    if (w.id === "potenziale" && ((d.talent ?? 0) >= 68 || (d.pot ?? 0) >= 93)) unlock.push("sp_fenomeno");
     s.creation.queue.shift();
     if (unlock.length) s.creation.queue.unshift(...unlock);
     s.creation.done.push({ wheel: w.id, label: seg.label, note });
@@ -133,7 +185,7 @@ export function spinPro(s: ProState, rng: Rng): { index: number; label: string; 
     case "torneo": {
       const t = seg.data as string;
       const nat = NATION_BY_ID.get(s.p.nation)!;
-      const name = s.year % 4 === 2 ? "Mondiale" : nat.league === "BRA" || nat.league === "ARG" ? "Copa América" : "Europeo";
+      const name = s.year % 4 === 2 ? "Mondiale" : CONF_CUP[nat.conf];
       if (t === "campioni") { s.trophies.cups.push(`${name} ${s.year}`); note = `${nat.name} campione: ${name} vinto!`; }
       else note = { finale: "Finale persa", semi: "Fuori in semifinale", quarti: "Fuori ai quarti", gironi: "Fuori ai gironi" }[t];
       s.trophies.intl.push(`${name} ${s.year}: ${seg.label}`);
@@ -147,16 +199,16 @@ export function spinPro(s: ProState, rng: Rng): { index: number; label: string; 
 /** Valutazione iniziale: talento + quanto il fisico si adatta al ruolo + tratti. */
 export function fitBonus(d: Partial<Pro>): number {
   let f = 0;
-  const h = d.height ?? 180, sp = d.speed ?? 2, pw = d.power ?? 2;
-  if (d.role === "POR") f += h >= 190 ? 2 : h <= 180 ? -2 : 0;
-  if (d.role === "DIF") f += (h >= 188 ? 1 : h <= 176 ? -1 : 0) + (pw === 3 ? 1 : pw === 1 ? -1 : 0) + (d.sub === "Terzino" && sp >= 3 ? 1 : 0);
-  if (d.role === "CEN") f += (d.stamina === 3 ? 1 : d.stamina === 1 ? -1 : 0) + (d.sub === "Mediano" && pw === 3 ? 1 : 0);
-  if (d.role === "ATT") f += (sp >= 3 ? 1 : sp === 1 ? -1 : 0) + (d.sub === "Prima punta" && (h >= 186 || pw === 3) ? 1 : 0) + (d.sub === "Ala" && sp === 4 ? 1 : 0);
+  const h = d.height ?? 180, sp = d.speed ?? 3, pw = d.power ?? 3, st = d.stamina ?? 3;
+  const wide = ["Terzino", "Terzino offensivo", "Quinto di fascia", "Esterno di centrocampo", "Ala", "Ala invertita"].includes(d.sub ?? "");
+  if (d.role === "POR") f += h >= 189 ? 2 : h >= 185 ? 1 : h <= 180 ? -2 : 0;
+  if (d.role === "DIF") f += (h >= 188 ? 1 : h <= 175 ? -1 : 0) + (pw >= 4 ? 1 : pw <= 1 ? -1 : 0) + (wide && sp >= 4 ? 1 : 0);
+  if (d.role === "CEN") f += (st >= 4 ? 1 : st <= 1 ? -1 : 0) + (["Mediano", "Box to box"].includes(d.sub ?? "") && pw >= 4 ? 1 : 0) + (wide && sp >= 4 ? 1 : 0);
+  if (d.role === "ATT") f += (sp >= 4 ? 1 : sp <= 2 ? -1 : 0) + (["Prima punta", "Attaccante d'area"].includes(d.sub ?? "") && (h >= 186 || pw >= 4) ? 1 : 0) + (wide && sp >= 5 ? 1 : 0);
   if (d.foot === "ambidestro") f += 1;
-  const t = d.traits ?? [];
-  if (t.includes("tasc_riflessi") || t.includes("muro_insuperabile")) f += 2;
-  if (t.includes("tasc_uscite")) f -= 2;
-  return clampN(f, -4, 4);
+  if (sp === 1 && d.role !== "POR") f -= 1;
+  for (const t of d.traits ?? []) f += traitInfo(t)?.fx.ovr ?? 0;
+  return clampN(f, -4, 5);
 }
 
 export function finishCreation(s: ProState, name: string, number: number) {
@@ -164,9 +216,12 @@ export function finishCreation(s: ProState, name: string, number: number) {
   const ovr = clampN((d.talent ?? 58) + fitBonus(d), 45, 75);
   s.p = {
     name: name.trim() || "Mario Rossi", number: clampN(Math.round(number) || 10, 1, 99), nation: d.nation ?? "ita", role: (d.role ?? "ATT") as Role,
-    sub: d.sub ?? "Prima punta", spec: d.spec ?? "", foot: d.foot ?? "destro", height: d.height ?? 180, speed: d.speed ?? 2, stamina: d.stamina ?? 2,
-    power: d.power ?? 2, character: d.character ?? "Professionista", talent: d.talent ?? 58, pot: d.pot ?? 80, ovr, age: 17, traits: d.traits ?? [],
+    sub: d.sub ?? "Prima punta", spec: d.spec ?? "", foot: d.foot ?? "destro", height: d.height ?? 180, speed: d.speed ?? 3, stamina: d.stamina ?? 3,
+    power: d.power ?? 3, character: d.character ?? "Professionista", talent: d.talent ?? 58, pot: d.pot ?? 80, ovr, age: 17, traits: d.traits ?? [],
+    nickname: d.nickname, celebration: d.celebration,
   };
+  const f0 = fx(s.p);
+  s.rel = clampN(50 + f0.rel, 0, 100); s.morale = clampN(60 + f0.morale, 0, 100);
   s.status = "giovanili"; s.contractYears = 3; s.salary = 0.1;
   s.news.unshift(`${s.p.name} firma il primo contratto con il settore giovanile del ${CLUB_BY_ID.get(s.clubId)!.name}.`);
   startSummer(s);
@@ -244,27 +299,29 @@ export function shares(p: Pro): { g: number; a: number } {
     "Prima punta": [0.32, 0.08], "Seconda punta": [0.24, 0.14], "Falso nove": [0.22, 0.16], Ala: [0.18, 0.2],
     Trequartista: [0.14, 0.22], Mezzala: [0.09, 0.14], Regista: [0.04, 0.18], Mediano: [0.03, 0.06],
     Terzino: [0.03, 0.12], Centrale: [0.04, 0.02], Libero: [0.03, 0.04], "Classico tra i pali": [0, 0], "Portiere-libero": [0, 0.01],
+    "Centravanti di manovra": [0.26, 0.13], "Ala invertita": [0.22, 0.15], "Attaccante d'area": [0.34, 0.05], "Punta mobile": [0.24, 0.13],
+    "Box to box": [0.08, 0.1], Incursore: [0.11, 0.08], "Esterno di centrocampo": [0.07, 0.15], Metodista: [0.03, 0.16],
+    "Terzino offensivo": [0.03, 0.15], Stopper: [0.03, 0.01], Braccetto: [0.04, 0.04], "Quinto di fascia": [0.05, 0.14],
+    "Portiere acrobatico": [0, 0], "Comandante della difesa": [0, 0], "Portiere moderno": [0, 0.01],
   };
   let [g, a] = base[p.sub] ?? [0.1, 0.1];
-  const t = p.traits, sp = p.spec;
-  if (sp === "Colpo di testa" || sp === "Rapace d'area") g += 0.05;
-  if (sp === "Tiro a giro" || sp === "Tiro da fuori") g += 0.03;
-  if (sp === "Inserimenti") g += 0.04;
-  if (sp === "Filtranti" || sp === "Spinta sulla fascia") a += 0.05;
-  if (sp === "Gioco aereo") g += 0.03;
-  if (t.includes("torre_gol") || t.includes("muro_corner")) g += 0.05;
-  if (t.includes("torre_sponda") || t.includes("freccia_dribbling")) a += 0.05;
-  if (t.includes("freccia_contro")) g += 0.04;
-  return { g, a };
+  const SPEC: Record<string, [number, number]> = {
+    "Colpo di testa": [0.05, 0], "Rapace d'area": [0.05, 0], "Tiro a giro": [0.03, 0.01], "Tiro da fuori": [0.03, 0], Inserimenti: [0.04, 0], "Tiro al volo": [0.04, 0],
+    Rigori: [0.03, 0], Punizioni: [0.03, 0.01], Dribbling: [0.02, 0.03], Velocità: [0.02, 0.02], Filtranti: [0, 0.05], "Visione di gioco": [0, 0.05],
+    "Lanci lunghi": [0, 0.03], "Spinta sulla fascia": [0, 0.05], Cross: [0, 0.05], "Gioco aereo": [0.03, 0], Impostazione: [0, 0.02], "Piedi buoni": [0, 0.01],
+  };
+  const sx = SPEC[p.spec] ?? [0, 0];
+  const f = fx(p);
+  return { g: Math.max(0, g + sx[0] + f.g), a: Math.max(0, a + sx[1] + f.a) };
 }
 
 function matchRating(rng: Rng, p: Pro, clubS: number, g: number, a: number, won: boolean, lost: boolean, conceded: number, form: number, morale: number): number {
   let r = 6.0 + (p.ovr - clubS) * 0.03 + g * 0.8 + a * 0.45 + (won ? 0.3 : lost ? -0.3 : 0) + form * 0.15 + (morale - 60) / 200 + (rng.next() - 0.5) * 0.9;
   if (p.role === "POR") r += conceded === 0 ? 0.6 : -0.3 * Math.max(0, conceded - 1);
   if (p.role === "DIF") r += conceded === 0 ? 0.35 : -0.15 * Math.max(0, conceded - 1);
-  if (p.traits.includes("fen_riflettori")) r = 6.3 + (r - 6.3) * 1.35;
-  if (p.traits.includes("torre_lento") && g > 0) r += 0.4;
-  if (p.traits.includes("freccia_recupero") && p.role !== "ATT") r += 0.15;
+  const f = fx(p);
+  r += f.r;
+  if (f.volatile) r = 6.3 + (r - 6.3) * (1 + f.volatile);
   return clampN(Math.round(r * 2) / 2, 4, 10);
 }
 
@@ -308,11 +365,12 @@ function playFixture(s: ProState, f: Fixture, rng: Rng) {
   const st = s.stats;
   st.apps++; if (min === 90) st.starts++; st.minutes += min; st.goals += g; st.assists += a; st.rSum += r; st.rN++;
   if (gThem === 0 && min >= 60) st.cs++;
-  const yc = (s.p.role === "DIF" || s.p.sub === "Mediano" ? 0.18 : 0.08) * (s.p.character === "Testa calda" || s.p.traits.includes("muro_gialli") ? 1.8 : 1);
+  const pf = fx(s.p);
+  const yc = (s.p.role === "DIF" || ["Mediano", "Box to box", "Stopper"].includes(s.p.sub) ? 0.18 : 0.08) * pf.card;
   if (rng.chance(yc)) st.yellow++;
   if (rng.chance(yc / 12)) { st.red++; s.injury = Math.max(s.injury, 1); }
   // infortuni
-  const inj = 0.011 * (s.p.stamina === 1 ? 2 : s.p.stamina === 3 ? 0.5 : 1) * (s.p.age >= 31 ? 1.4 : 1);
+  const inj = 0.011 * [2, 1.4, 1, 0.75, 0.5][clampN(s.p.stamina, 1, 5) - 1] * (s.p.age >= 31 ? 1.4 : 1) * pf.inj;
   if (rng.chance(inj)) { const n = rng.int(1, 6); s.injury = Math.max(s.injury, n); s.news.unshift(`Infortunio: ${n} ${n === 1 ? "partita" : "partite"} di stop.`); }
   f.me = { min, g, a, r };
 }
@@ -366,7 +424,7 @@ const MOMENTS: MomentDef[] = [
   { id: "rigore", icon: "⚪", title: "Rigore al 90'", when: (s) => s.p.role !== "POR" && s.status !== "giovanili",
     text: (s) => `Rigore decisivo per il ${clubName(s)} all'ultimo minuto. Il rigorista è in panchina.`,
     options: [
-      { label: "Lo tiro io", desc: "Gloria o polvere", apply: (s, r) => { const p = 0.7 + (s.p.spec === "Tiro a giro" ? 0.06 : 0) + (s.p.character === "Leader" ? 0.05 : 0); if (r.chance(p)) { s.stats.goals++; s.morale += 12; s.form += 1; s.rel += 5; return "GOL! Lo stadio esplode."; } s.morale -= 12; s.form -= 1; return "Parato. Notte insonne."; } },
+      { label: "Lo tiro io", desc: "Gloria o polvere", apply: (s, r) => { const p = 0.7 + (["Tiro a giro", "Rigori", "Punizioni"].includes(s.p.spec) || s.p.traits.includes("cecchino_rigori") ? 0.08 : 0) + (s.p.character === "Leader" ? 0.05 : 0) - (s.p.character === "Timido" ? 0.08 : 0); if (r.chance(p)) { s.stats.goals++; s.morale += 12; s.form += 1; s.rel += 5; return "GOL! Lo stadio esplode."; } s.morale -= 12; s.form -= 1; return "Parato. Notte insonne."; } },
       { label: "Lo lascio al capitano", desc: "Nessun rischio, nessuna gloria", apply: (s) => { s.rel += 3; return "Il capitano segna, la squadra ti ringrazia."; } },
     ] },
   { id: "parata", icon: "🧤", title: "Rigore contro nel derby", when: (s) => s.p.role === "POR" && s.status !== "giovanili",
@@ -419,10 +477,70 @@ const MOMENTS: MomentDef[] = [
       { label: "Fisico", desc: "Meno infortuni, forma +1", apply: (s) => { s.form += 1; s.injury = Math.max(0, s.injury - 1); return "Ti senti una roccia."; } },
       { label: "Riposo", desc: "Morale su", apply: (s) => { s.morale += 8; return "Testa libera."; } },
     ] },
+  { id: "derby", icon: "🔥", title: "Vigilia del derby", when: (s) => s.status !== "giovanili",
+    text: () => "I giornalisti ti chiedono una battuta sul derby di domenica.",
+    options: [
+      { label: "Provoco i rivali", desc: "Se vinci sei un idolo, se perdi…", apply: (s, r) => { if (r.chance(0.5 + (s.p.ovr - 70) / 100)) { s.morale += 12; s.stats.rSum += 0.5; return "Vinci il derby e ti prendi la curva."; } s.morale -= 10; s.rel -= 5; return "Derby perso: la tua frase gira ovunque."; } },
+      { label: "Rispetto per tutti", desc: "Niente rischi", apply: (s) => { s.rel += 3; return "Parole da professionista."; } },
+    ] },
+  { id: "rinnovo", icon: "✍️", title: "Proposta di rinnovo", when: (s) => s.status === "titolare" && s.contractYears <= 2,
+    text: (s) => `Il ${clubName(s)} vuole blindarti con un rinnovo anticipato.`,
+    options: [
+      { label: "Firmo subito", desc: "Più anni di contratto, ingaggio su", apply: (s) => { s.contractYears += 2; s.salary = r1(s.salary * 1.25); s.rel += 8; return "Rinnovo firmato davanti ai flash."; } },
+      { label: "Ne parliamo a giugno", desc: "Più libertà sul mercato", apply: (s) => { s.rel -= 4; s.promisedOffer = s.promisedOffer ?? "any"; return "L'agente prende tempo."; } },
+    ] },
+  { id: "sponsor", icon: "👟", title: "Sponsor personale", when: (s) => s.p.ovr >= 70,
+    text: () => "Un marchio sportivo ti offre un contratto da testimonial.",
+    options: [
+      { label: "Accetto lo spot", desc: "Morale su, ma qualche impegno in più", apply: (s, r) => { s.morale += 8; if (r.chance(0.3)) { s.form -= 1; return "Lo spot è virale, ma arrivi stanco agli allenamenti."; } return "Il tuo volto è sui cartelloni."; } },
+      { label: "Testa solo al campo", desc: "Forma +1", apply: (s) => { s.form += 1; return "Niente distrazioni."; } },
+    ] },
+  { id: "nuovomister", icon: "🔄", title: "Cambio di allenatore", when: (s) => s.segment >= 1,
+    text: (s) => `Il ${clubName(s)} esonera l'allenatore. Arriva un mister con idee nuove.`,
+    options: [
+      { label: "Mi presento subito da lui", desc: "Primo impatto", apply: (s, r) => { s.rel = r.chance(0.6) ? 60 : 40; return s.rel >= 60 ? "Feeling immediato con il nuovo mister." : "Non gli sei piaciuto subito."; } },
+      { label: "Aspetto e lavoro", desc: "Ripartenza neutra", apply: (s) => { s.rel = 50; s.form += 1; return "Si riparte da zero, con impegno."; } },
+    ] },
+  { id: "giovane", icon: "👶", title: "Un ragazzo ti insidia il posto", when: (s) => s.status === "titolare" && s.p.age >= 26,
+    text: () => "Dalla Primavera sale un talento che gioca nel tuo ruolo.",
+    options: [
+      { label: "Gli faccio da chioccia", desc: "Rapporto col mister su, spogliatoio unito", apply: (s) => { s.rel += 8; s.morale += 4; return "Il ragazzo ti chiama 'capitano'."; } },
+      { label: "Mi alleno il doppio", desc: "Forma su, rischio infortunio", apply: (s, r) => { s.form += 1; if (r.chance(0.25)) { s.injury = 2; return "Troppo carico: 2 partite di stop."; } return "Il posto resta tuo."; } },
+    ] },
+  { id: "lite", icon: "🥊", title: "Lite con un compagno", when: (s) => ["Testa calda", "Ribelle", "Istrionico"].includes(s.p.character) || s.morale < 45,
+    text: () => "In allenamento volano parole grosse con un compagno.",
+    options: [
+      { label: "Chiedo scusa", desc: "Spogliatoio sereno", apply: (s) => { s.morale += 3; s.rel += 3; return "Abbraccio e si riparte."; } },
+      { label: "Non mollo", desc: "Rischio multa", apply: (s, r) => { if (r.chance(0.5)) { s.rel -= 12; return "Multa e una partita in tribuna."; } s.morale += 5; return "Il compagno abbassa i toni."; } },
+    ] },
+  { id: "ruolo", icon: "🧭", title: "Proposta di cambio ruolo", when: (s) => s.status !== "titolare" && s.p.role !== "POR",
+    text: (s) => `Il mister ti propone di giocare in un'altra posizione per trovare spazio (oggi sei ${s.p.sub.toLowerCase()}).`,
+    options: [
+      { label: "Ci provo", desc: "Più minuti subito, ma devi adattarti", apply: (s, r) => { if (r.chance(0.6)) { s.status = s.status === "riserva" ? "rotazione" : "titolare"; s.form -= 1; return "Nuova posizione, più spazio: ti stai adattando."; } s.form -= 1; return "Non è il tuo ruolo: qualche partita difficile."; } },
+      { label: "Resto nel mio ruolo", desc: "Nessun cambio", apply: (s) => { s.rel -= 4; return "Il mister annuisce, poco convinto."; } },
+    ] },
+  { id: "premio", icon: "🏅", title: "Giocatore del mese", when: (s) => s.stats.rN >= 4 && s.stats.rSum / s.stats.rN >= 6.8,
+    text: () => "Sei candidato a giocatore del mese del campionato.",
+    options: [
+      { label: "Ringrazio i compagni", desc: "Spogliatoio contento", apply: (s, r) => { s.morale += 8; if (r.chance(0.5)) { s.news.unshift("Premio: giocatore del mese!"); return "Vinci il premio e lo dedichi alla squadra."; } return "Arrivi secondo, ma i compagni apprezzano."; } },
+      { label: "Punto al prossimo", desc: "Forma su", apply: (s) => { s.form += 1; return "Fame di altri premi."; } },
+    ] },
+  { id: "tifosi", icon: "📣", title: "Contestazione dei tifosi", when: (s) => s.stats.rN >= 4 && s.stats.rSum / s.stats.rN < 6.1,
+    text: () => "Dopo una brutta prestazione la curva ti fischia.",
+    options: [
+      { label: "Vado sotto la curva", desc: "Coraggio: può finire bene o male", apply: (s, r) => { if (r.chance(0.55)) { s.morale += 10; return "Applausi: la curva apprezza il coraggio."; } s.morale -= 8; return "Insulti e tensione."; } },
+      { label: "Rispondo in campo", desc: "Forma su", apply: (s) => { s.form += 1; return "Testa bassa e lavorare."; } },
+    ] },
+  { id: "nazionale", icon: "🌍", title: "Chiamata in nazionale", when: (s) => s.p.age >= 18 && s.p.ovr >= (NATION_BY_ID.get(s.p.nation)?.strength ?? 80) - 6,
+    text: (s) => `Il ct di ${NATION_BY_ID.get(s.p.nation)!.flag} ${NATION_BY_ID.get(s.p.nation)!.name} ti convoca per le amichevoli.`,
+    options: [
+      { label: "Rispondo presente", desc: "Morale su, un po' di stanchezza", apply: (s) => { s.morale += 10; s.form -= 1; s.trophies.caps += 2; return "Due presenze in nazionale!"; } },
+      { label: "Chiedo di riposare", desc: "Forma su, il ct se lo ricorda", apply: (s) => { s.form += 1; return "Il ct non ha gradito."; } },
+    ] },
 ];
 
 function saveOutcome(s: ProState, r: Rng, p: number) {
-  const bonus = s.p.spec === "Para-rigori" || s.p.traits.includes("tasc_paratutto") ? 0.15 : 0;
+  const bonus = s.p.spec === "Para-rigori" || s.p.traits.includes("tasc_paratutto") || s.p.traits.includes("gatto_rigori") ? 0.15 : 0;
   if (r.chance(p + bonus)) { s.morale += 12; s.form += 1; s.rel += 5; s.stats.rSum += 1; return "PARATO! Sei l'eroe del derby."; }
   s.morale -= 6; return "Gol. Avevi scelto il lato sbagliato.";
 }
@@ -450,7 +568,7 @@ export function chooseMoment(s: ProState, idx: number, rng: Rng): string {
 type Sit = { sit: string; choices: { id: string; label: string; pct: number }[] };
 function situations(p: Pro): Sit[] {
   const sp = (x: string) => (p.spec === x ? 0.12 : 0);
-  const h = p.height >= 186 ? 0.1 : p.height <= 174 ? -0.1 : 0, v = (p.speed - 2) * 0.06, q = (p.ovr - 70) / 100;
+  const h = p.height >= 186 ? 0.1 : p.height <= 174 ? -0.1 : 0, v = (p.speed - 3) * 0.05, q = (p.ovr - 70) / 100 - (p.character === "Timido" ? 0.05 : 0);
   const c = (id: string, label: string, pct: number) => ({ id, label, pct: clampN(Math.round((pct + q) * 100) / 100, 0.08, 0.9) });
   if (p.role === "ATT") return [
     { sit: "Palla al limite dell'area, difesa schierata.", choices: [c("giro", "Tiro a giro", 0.3 + sp("Tiro a giro")), c("potenza", "Tiro di potenza", 0.26), c("pass", "Passaggio al compagno", 0.4)] },
@@ -607,8 +725,9 @@ export function endSeason(s: ProState, rng: Rng) {
 
   // obiettivo personale
   const g = s.goal;
-  const val = !g ? 0 : g.kind === "gol" ? st.goals : g.kind === "assist" ? st.assists : g.kind === "voto" ? avg : g.kind === "pres" ? st.apps : g.kind === "ygol" ? (st.yGoals ?? 0) + st.goals : g.kind === "yapps" ? (st.yApps ?? 0) + st.apps : st.cs;
-  const goalOk = !!g && val >= g.n;
+  const val = !g ? 0 : g.kind === "gol" ? st.goals : g.kind === "assist" ? st.assists : g.kind === "ga" ? st.goals + st.assists : g.kind === "voto" ? avg : g.kind === "pres" ? st.apps
+    : g.kind === "ygol" ? (st.yGoals ?? 0) + st.goals : g.kind === "yapps" ? (st.yApps ?? 0) + st.apps : g.kind === "cs" ? st.cs : 0;
+  const goalOk = !!g && (g.kind === "pos" ? pos <= g.n : g.kind === "maxyellow" ? st.yellow <= g.n && st.apps >= 10 : val >= g.n);
 
   // crescita
   const before = s.p.ovr;
@@ -616,7 +735,9 @@ export function endSeason(s: ProState, rng: Rng) {
   const share = clampN(st.minutes / (totalRounds(s) * 90), 0, 1);
   const ageF = age <= 19 ? 5 : age <= 21 ? 4 : age <= 23 ? 3 : age <= 26 ? 1.5 : age <= 29 ? 0.3 : age <= 31 ? -1 : age <= 33 ? -2.2 : -3.6;
   let delta = ageF * (age < 27 ? clampN((s.p.pot - s.p.ovr) / 11, 0, 1.1) : 1) * (0.3 + 0.9 * share) + (avg ? (avg - 6.3) * 1.2 : -0.5) + (rng.next() - 0.5) * 2;
-  if (s.p.traits.includes("fen_precoce") && age <= 21) delta += 1.5;
+  const gf = fx(s.p);
+  if (age <= 23) delta += gf.grow; else delta += gf.grow * 0.3;
+  if (delta < 0) delta *= gf.age;
   if (s.p.traits.includes("_extra")) { delta += 1; s.p.traits = s.p.traits.filter((t) => t !== "_extra"); }
   if (s.p.character === "Professionista" && age >= 29) delta += 0.6;
   if (goalOk) delta += 0.7;
@@ -624,7 +745,7 @@ export function endSeason(s: ProState, rng: Rng) {
   if (delta > 0) newOvr = Math.min(newOvr, Math.max(before, s.p.pot));
   s.p.ovr = clampN(newOvr, 40, 97);
   const notes: string[] = [];
-  if (age >= 29 && s.p.speed > 1 && rng.chance(0.3)) { s.p.speed--; notes.push("Perdi un po' di velocità con gli anni."); }
+  if (age >= 29 && s.p.speed > 1 && rng.chance(0.3 * gf.age)) { s.p.speed--; notes.push("Perdi un po' di velocità con gli anni."); }
 
   // club: forza che cambia un po' ogni anno
   for (const c of CLUBS) s.strengths[c.id] = clampN(Math.round((s.strengths[c.id] ?? c.strength) + (c.strength - (s.strengths[c.id] ?? c.strength)) * 0.3 + (rng.next() - 0.5) * 4), 58, 92);
@@ -661,7 +782,8 @@ export function makeOffers(s: ProState, rng: Rng): Offer[] {
   const cur = CLUB_BY_ID.get(s.clubId)!;
   const recent = s.history[s.history.length - 1];
   const form = recent ? recent.avg - 6.3 : 0;
-  const eff = p.ovr + form * 2 + (p.traits.includes("fen_figlio") ? 2 : 0) + (p.age <= 21 ? Math.min(4, (p.pot - p.ovr) / 4) : 0);
+  const pf = fx(p);
+  const eff = p.ovr + form * 2 + pf.eff + (p.age <= 21 ? Math.min(4, (p.pot - p.ovr) / 4) : 0);
   const candidates = CLUBS.filter((c) => c.id !== s.clubId).map((c) => {
     const S = s.strengths[c.id];
     const gap = eff - S;
@@ -676,7 +798,7 @@ export function makeOffers(s: ProState, rng: Rng): Offer[] {
   }).filter((x) => x.w > 0.5);
   const offers: Offer[] = [];
   const used = new Set<string>();
-  const n = s.promisedOffer ? 3 : rng.int(1, 3);
+  const n = clampN((s.promisedOffer ? 3 : rng.int(1, 3)) + pf.offers, 1, 4);
   for (let i = 0; i < n && candidates.length; i++) {
     const pool = candidates.filter((x) => !used.has(x.c.id));
     if (!pool.length) break;
@@ -685,7 +807,7 @@ export function makeOffers(s: ProState, rng: Rng): Offer[] {
     used.add(pick.c.id);
     const S = s.strengths[pick.c.id];
     const rich = pick.c.league === "SAU" || (pick.c.league === "USA" && p.age >= 30);
-    offers.push({ clubId: pick.c.id, status: statusFor(p.ovr, S, p.age), years: p.age >= 32 ? rng.int(1, 2) : rng.int(2, 5), salary: salaryFor(p.ovr, pick.c.league, rich) });
+    offers.push({ clubId: pick.c.id, status: statusFor(p.ovr, S, p.age), years: p.age >= 32 ? rng.int(1, 2) : rng.int(2, 5), salary: r1(salaryFor(p.ovr, pick.c.league, rich) * pf.salary) });
   }
   // giovani poco impiegati: prestito per crescere
   if (p.age <= 21 && (s.status === "giovanili" || s.status === "riserva")) {
@@ -730,7 +852,8 @@ export function acceptOffer(s: ProState, idx: number) {
   const from = s.clubId;
   if (o.loan) s.loanFrom = s.loanFrom ?? from; else if (!o.stay) s.loanFrom = null;
   if (o.stay && s.loanFrom && o.clubId === s.loanFrom) s.loanFrom = null;
-  if (!o.stay || o.clubId !== from) { s.news.unshift(`${o.loan ? "Prestito" : "Trasferimento"}: ${s.p.name} passa al ${CLUB_BY_ID.get(o.clubId)!.name} (${LEAGUES[CLUB_BY_ID.get(o.clubId)!.league].name}).`); s.rel = 50; }
+  if (!o.stay || o.clubId !== from) { s.news.unshift(`${o.loan ? "Prestito" : "Trasferimento"}: ${s.p.name} passa al ${CLUB_BY_ID.get(o.clubId)!.name} (${LEAGUES[CLUB_BY_ID.get(o.clubId)!.league].name}).`); s.rel = clampN(50 + fx(s.p).rel, 0, 100); }
+  s.morale = clampN(Math.round((s.morale + 60 + fx(s.p).morale) / 2), 0, 100);
   s.clubId = o.clubId; s.contractYears = o.years; s.salary = o.salary; s.status = o.status;
   s.year++; s.season++;
   startSummer(s);

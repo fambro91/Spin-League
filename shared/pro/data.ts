@@ -96,18 +96,43 @@ export const TABLE_LEAGUES: LeagueCode[] = ["ENG", "ESP", "ITA", "GER", "FRA", "
 /** Posti in Champions per campionato (dalla classifica della stagione prima). */
 export const CL_SPOTS: Partial<Record<LeagueCode, number>> = { ENG: 4, ESP: 4, ITA: 3, GER: 3, FRA: 2, NED: 1, POR: 1 };
 
-export type Nation = { id: string; name: string; flag: string; league: LeagueCode; strength: number; adj: string };
+export type Conf = "UEFA" | "CONMEBOL" | "CAF" | "AFC" | "CONCACAF";
+/** league: campionato di casa (se è nel gioco); academies: dove vanno i ragazzi di quel paese. */
+export type Nation = { id: string; name: string; flag: string; league: LeagueCode | null; academies: LeagueCode[]; strength: number; conf: Conf; weight: number };
+const N = (id: string, name: string, flag: string, league: LeagueCode | null, academies: LeagueCode[], strength: number, conf: Conf, weight: number): Nation => ({ id, name, flag, league, academies, strength, conf, weight });
 export const NATIONS: Nation[] = [
-  { id: "ita", name: "Italia", flag: "🇮🇹", league: "ITA", strength: 76, adj: "italiano" },
-  { id: "esp", name: "Spagna", flag: "🇪🇸", league: "ESP", strength: 80, adj: "spagnolo" },
-  { id: "eng", name: "Inghilterra", flag: "🏴", league: "ENG", strength: 79, adj: "inglese" },
-  { id: "fra", name: "Francia", flag: "🇫🇷", league: "FRA", strength: 81, adj: "francese" },
-  { id: "ger", name: "Germania", flag: "🇩🇪", league: "GER", strength: 78, adj: "tedesco" },
-  { id: "bra", name: "Brasile", flag: "🇧🇷", league: "BRA", strength: 79, adj: "brasiliano" },
-  { id: "arg", name: "Argentina", flag: "🇦🇷", league: "ARG", strength: 80, adj: "argentino" },
-  { id: "por", name: "Portogallo", flag: "🇵🇹", league: "POR", strength: 78, adj: "portoghese" },
-  { id: "ned", name: "Olanda", flag: "🇳🇱", league: "NED", strength: 77, adj: "olandese" },
+  N("ita", "Italia", "🇮🇹", "ITA", ["ITA", "ITA2"], 76, "UEFA", 18),
+  N("esp", "Spagna", "🇪🇸", "ESP", ["ESP", "ESP2"], 81, "UEFA", 8),
+  N("eng", "Inghilterra", "🏴", "ENG", ["ENG", "ENG2"], 80, "UEFA", 8),
+  N("fra", "Francia", "🇫🇷", "FRA", ["FRA", "FRA2"], 82, "UEFA", 8),
+  N("ger", "Germania", "🇩🇪", "GER", ["GER", "GER2"], 78, "UEFA", 7),
+  N("bra", "Brasile", "🇧🇷", "BRA", ["BRA"], 80, "CONMEBOL", 7),
+  N("arg", "Argentina", "🇦🇷", "ARG", ["ARG"], 81, "CONMEBOL", 6),
+  N("por", "Portogallo", "🇵🇹", "POR", ["POR"], 79, "UEFA", 5),
+  N("ned", "Olanda", "🇳🇱", "NED", ["NED"], 78, "UEFA", 4),
+  N("bel", "Belgio", "🇧🇪", null, ["NED", "FRA"], 77, "UEFA", 3),
+  N("cro", "Croazia", "🇭🇷", null, ["GER", "ITA"], 77, "UEFA", 3),
+  N("srb", "Serbia", "🇷🇸", null, ["ITA", "POR"], 72, "UEFA", 2),
+  N("den", "Danimarca", "🇩🇰", null, ["NED", "GER"], 75, "UEFA", 2),
+  N("nor", "Norvegia", "🇳🇴", null, ["NED", "GER"], 74, "UEFA", 2),
+  N("swe", "Svezia", "🇸🇪", null, ["NED", "ITA"], 71, "UEFA", 2),
+  N("pol", "Polonia", "🇵🇱", null, ["GER", "ITA"], 72, "UEFA", 2),
+  N("sui", "Svizzera", "🇨🇭", null, ["GER", "ITA"], 74, "UEFA", 2),
+  N("aut", "Austria", "🇦🇹", null, ["GER"], 74, "UEFA", 2),
+  N("tur", "Turchia", "🇹🇷", null, ["GER", "NED"], 74, "UEFA", 2),
+  N("uru", "Uruguay", "🇺🇾", null, ["ARG", "ESP"], 77, "CONMEBOL", 2),
+  N("col", "Colombia", "🇨🇴", null, ["ARG", "POR"], 76, "CONMEBOL", 2),
+  N("mex", "Messico", "🇲🇽", null, ["USA", "ESP"], 72, "CONCACAF", 2),
+  N("usa", "Stati Uniti", "🇺🇸", "USA", ["USA", "ENG2"], 73, "CONCACAF", 2),
+  N("jpn", "Giappone", "🇯🇵", null, ["GER", "NED"], 74, "AFC", 2),
+  N("kor", "Corea del Sud", "🇰🇷", null, ["GER", "POR"], 72, "AFC", 2),
+  N("mar", "Marocco", "🇲🇦", null, ["FRA", "ESP"], 77, "CAF", 2),
+  N("sen", "Senegal", "🇸🇳", null, ["FRA", "FRA2"], 75, "CAF", 2),
+  N("nga", "Nigeria", "🇳🇬", null, ["POR", "NED"], 73, "CAF", 2),
+  N("civ", "Costa d'Avorio", "🇨🇮", null, ["FRA", "FRA2"], 74, "CAF", 2),
+  N("gha", "Ghana", "🇬🇭", null, ["POR", "NED"], 71, "CAF", 1),
 ];
+export const CONF_CUP: Record<Conf, string> = { UEFA: "Europeo", CONMEBOL: "Copa América", CAF: "Coppa d'Africa", AFC: "Coppa d'Asia", CONCACAF: "Gold Cup" };
 export const NATION_BY_ID = new Map(NATIONS.map((n) => [n.id, n]));
 
 export const leagueOf = (clubId: string) => LEAGUES[CLUB_BY_ID.get(clubId)!.league];

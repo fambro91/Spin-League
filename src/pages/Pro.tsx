@@ -9,14 +9,14 @@ import { IcRotate } from "../components/Icons";
 import { ding, unlockAudio } from "../feedback";
 import { cryptoRng } from "../../shared/rng";
 import { CLUB_BY_ID, LEAGUES, NATION_BY_ID, TABLE_LEAGUES, type LeagueCode } from "../../shared/pro/data";
-import { proWheel, ROLE_LABEL, SPEED, STAMINA, POWER, TRAIT_INFO } from "../../shared/pro/wheels";
+import { proWheel, ROLE_LABEL, SPEED, STAMINA, POWER } from "../../shared/pro/wheels";
 import {
-  acceptOffer, canRetire, careerTotals, chooseMoment, clouAction, currentWheel, finishClou, finishCreation, goToOffers, marketValue, myLeague, newPro, playSegment,
+  acceptOffer, canRetire, careerTotals, migratePro, traitInfo, chooseMoment, clouAction, currentWheel, finishClou, finishCreation, goToOffers, marketValue, myLeague, newPro, playSegment,
   retire, SEGMENTS, spinPro, STATUS_LABEL, table, totalRounds, type ProState,
 } from "../../shared/pro/career";
 
 const KEY = "spin:pro";
-const load = (): ProState | null => { try { return JSON.parse(store.get(KEY) ?? "null"); } catch { return null; } };
+const load = (): ProState | null => { try { const s = JSON.parse(store.get(KEY) ?? "null"); return s ? migratePro(s) : null; } catch { return null; } };
 const save = (s: ProState | null) => { try { if (s) localStorage.setItem(KEY, JSON.stringify(s)); else localStorage.removeItem(KEY); } catch { /* storage pieno */ } };
 const club = (id: string) => CLUB_BY_ID.get(id);
 const dec = (x: number) => String(x).replace(".", ",");
@@ -159,7 +159,7 @@ function CreationStep({ s, mutate }: StepProps) {
 function PlayerCard({ s, big }: { s: ProState; big?: boolean }) {
   const p = s.p, c = club(s.clubId)!, nat = NATION_BY_ID.get(p.nation)!;
   const attrs: [string, number, string][] = [
-    ["Velocità", p.speed * 25, SPEED[p.speed - 1]], ["Resistenza", p.stamina * 33, STAMINA[p.stamina - 1]], ["Forza", p.power * 33, POWER[p.power - 1]], ["Altezza", Math.min(100, (p.height - 160) * 2.6), `${dec((p.height / 100).toFixed(2) as unknown as number)} m`],
+    ["Velocità", (p.speed / 6) * 100, SPEED[p.speed - 1]], ["Resistenza", (p.stamina / 5) * 100, STAMINA[p.stamina - 1]], ["Forza", (p.power / 5) * 100, POWER[p.power - 1]], ["Altezza", Math.min(100, (p.height - 160) * 2.6), `${(p.height / 100).toFixed(2).replace(".", ",")} m`],
   ];
   return (
     <div className={`pcard ${big ? "big" : ""}`} style={{ ["--kit" as any]: c.colors[0], ["--kit2" as any]: c.colors[1] }}>
@@ -169,16 +169,22 @@ function PlayerCard({ s, big }: { s: ProState; big?: boolean }) {
         <div className="pc-crest">{crestOf(s.clubId, big ? 48 : 36)}</div>
       </div>
       <div className="pc-name">{p.name}</div>
+      {p.nickname && <div className="pc-nick">«{p.nickname}»</div>}
       <div className="pc-sub">{p.sub} · {p.spec} · piede {p.foot}</div>
-      <div className="pc-meta">{c.name} · {p.age} anni · potenziale {p.pot}</div>
+      <div className="pc-meta">{c.name} · {p.age} anni · {nat.name}{p.celebration ? ` · esultanza: ${p.celebration.toLowerCase()}` : ""}</div>
       {big && (
         <div className="pc-attrs">
           {attrs.map(([k, v, l]) => <div key={k}><div className="row spread small"><span>{k}</span><span>{l}</span></div><Bar value={v} color="var(--amber)" /></div>)}
         </div>
       )}
+      {big && (
+        <ul className="pc-traitlist">
+          {p.traits.map((t) => ({ t, i: traitInfo(t) })).filter((x) => x.i).map(({ t, i }) => <li key={t}><span aria-hidden>{i!.icon}</span> <strong>{i!.label}</strong>{i!.desc ? <span className="muted"> · {i!.desc}</span> : null}</li>)}
+        </ul>
+      )}
       <div className="pc-traits">
         <span className="trait-chip">{p.character}</span>
-        {p.traits.filter((t) => TRAIT_INFO[t]).map((t) => <span key={t} className="trait-chip" title={TRAIT_INFO[t].desc}>{TRAIT_INFO[t].icon} {TRAIT_INFO[t].label}</span>)}
+        {!big && p.traits.map((t) => ({ t, i: traitInfo(t) })).filter((x) => x.i).map(({ t, i }) => <span key={t} className="trait-chip" title={i!.desc}>{i!.icon} {i!.label}</span>)}
       </div>
     </div>
   );
