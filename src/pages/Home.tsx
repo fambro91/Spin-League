@@ -31,6 +31,7 @@ export function Home() {
   };
 
   const hasSolo = !!loadSolo();
+  const hasPro = (() => { try { return !!localStorage.getItem("spin:pro"); } catch { return false; } })();
   const GROUP = false; // leghe tra amici congelate per ora
   return (
     <div className="wrap">
@@ -50,10 +51,18 @@ export function Home() {
       )}
 
       <a className="panel solo-card cta-card" href="#/solo" style={{ textDecoration: "none", color: "inherit", display: "grid" }}>
-        <span className="ic" aria-hidden>🤖</span>
+        <span className="ic" aria-hidden>📋</span>
         <span>
-          <strong style={{ fontFamily: "var(--display)", fontSize: 24 }}>{hasSolo ? "Continua la carriera" : "Inizia la carriera"}</strong>
-          <span className="small muted" style={{ display: "block" }}>{hasSolo ? "Riprendi da dove eri rimasto, anche offline." : "Serie B e Serie A di bot, partite in diretta, anche offline."}</span>
+          <strong style={{ fontFamily: "var(--display)", fontSize: 24 }}>Carriera allenatore</strong>
+          <span className="small muted" style={{ display: "block" }}>{hasSolo ? "Riprendi il tuo club da dove eri rimasto." : "Crea un club con le ruote: Serie B, Serie A, partite in diretta."}</span>
+        </span>
+      </a>
+
+      <a className="panel solo-card cta-card" href="#/pro" style={{ textDecoration: "none", color: "inherit", display: "grid" }}>
+        <span className="ic" aria-hidden>⚽</span>
+        <span>
+          <strong style={{ fontFamily: "var(--display)", fontSize: 24 }}>Carriera giocatore</strong>
+          <span className="small muted" style={{ display: "block" }}>{hasPro ? "Riprendi la tua carriera." : "Dai 17 anni al ritiro, tra i campionati più grandi del mondo."}</span>
         </span>
       </a>
 

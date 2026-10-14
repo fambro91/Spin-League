@@ -520,3 +520,59 @@ tr.zone-down td:first-child { box-shadow: inset 4px 0 0 var(--scarf); }
 .goal-pick button:hover:not(:disabled) { background: rgba(255, 179, 26, 0.25); }
 .live-end { margin-top: 14px; text-align: center; }
 .live-end .big { font-family: var(--display); font-weight: 900; font-size: 30px; line-height: 1.05; margin: 4px 0 8px; }
+
+/* ---------- carriera giocatore ---------- */
+.pro-intro { text-align: center; }
+.pro-intro .big-emoji { font-size: 64px; }
+.pcard { position: relative; border-radius: 18px; padding: 14px 16px 12px; margin-bottom: 14px; overflow: hidden; color: #fff;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--kit) 70%, #0b1d15), #0b1d15 75%); border: 2px solid color-mix(in srgb, var(--amber) 70%, transparent);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
+.pcard::after { content: ""; position: absolute; right: -40px; top: -40px; width: 160px; height: 160px; border-radius: 50%; background: var(--kit2); opacity: 0.12; }
+.pc-top { display: flex; align-items: center; gap: 12px; }
+.pc-ovr { display: flex; flex-direction: column; align-items: center; line-height: 1; }
+.pc-ovr b { font-family: var(--display); font-weight: 900; font-size: 44px; color: var(--amber); }
+.pc-ovr span { font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: 0.06em; }
+.pc-flag { font-size: 20px; margin-top: 2px; }
+.pc-num { font-family: var(--display); font-weight: 900; font-size: 58px; opacity: 0.18; margin-left: auto; }
+.pc-crest { margin-left: 4px; }
+.pc-name { font-family: var(--display); font-weight: 900; font-size: 30px; line-height: 1; margin-top: 6px; text-transform: uppercase; }
+.pcard.big .pc-name { font-size: 34px; }
+.pc-sub { font-weight: 700; margin-top: 2px; }
+.pc-meta { font-size: 13px; color: var(--chalk-dim); margin-top: 2px; }
+.pc-attrs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; margin-top: 10px; }
+.pc-traits { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; position: relative; z-index: 1; }
+.pc-mini { text-align: center; line-height: 1; }
+.pc-mini b { display: block; font-family: var(--display); font-weight: 900; font-size: 32px; color: var(--amber); }
+.pc-mini span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--chalk-dim); }
+.season-head .row { align-items: center; }
+.seg-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 12px 0 10px; font-size: 11px; color: var(--chalk-dim); text-align: center; }
+.seg-steps i { display: block; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.14); margin-bottom: 4px; }
+.seg-steps .done i { background: var(--amber); }
+.seg-steps .now { color: var(--chalk); font-weight: 700; }
+.seg-steps .now i { background: linear-gradient(90deg, var(--amber), rgba(255,179,26,0.25)); }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: 6px; }
+.stat-grid > div { text-align: center; background: rgba(0,0,0,0.25); border-radius: 10px; padding: 8px 4px; }
+.stat-grid b { display: block; font-family: var(--display); font-weight: 900; font-size: 26px; line-height: 1; }
+.stat-grid span { font-size: 11px; color: var(--chalk-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.moment-res { border-color: var(--amber); font-weight: 600; }
+.moment-res.good { border-color: var(--win); }
+.moment-res.bad { border-color: var(--scarf); }
+.res-dot { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; font-weight: 800; font-size: 12px; }
+.res-dot.V { background: var(--win); color: #062b12; } .res-dot.N { background: #c9cfcb; color: #222; } .res-dot.P { background: var(--scarf); color: #fff; }
+.chips-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px; }
+.chip-btn { flex: none; border: 1px solid var(--line); background: rgba(0,0,0,0.25); color: var(--chalk); border-radius: 999px; padding: 7px 12px; font-weight: 700; font-size: 13px; cursor: pointer; }
+.chip-btn.on { background: var(--amber); color: var(--amber-ink); border-color: var(--amber); }
+.offer.stay { border-style: dashed; }
+.offer-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 12px 0; }
+.offer-grid > div { background: rgba(0,0,0,0.25); border-radius: 10px; padding: 8px; text-align: center; }
+.offer-grid span { display: block; font-size: 11px; color: var(--chalk-dim); text-transform: uppercase; }
+.offer-grid b { font-size: 15px; }
+.st-titolare { color: var(--win); } .st-rotazione { color: var(--amber); } .st-riserva, .st-giovanili { color: #ff8a8f; }
+.career-rows { display: grid; gap: 6px; }
+.career-row { display: grid; grid-template-columns: 48px 1fr auto; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(243,246,238,0.08); font-size: 14px; }
+.career-row small { display: block; font-size: 11px; color: var(--chalk-dim); }
+.cr-year { font-family: var(--display); font-weight: 800; }
+.cr-club { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.cr-club > span { min-width: 0; }
+.cr-stats { text-align: right; font-weight: 700; }
+.legend .big { font-size: 40px; }
