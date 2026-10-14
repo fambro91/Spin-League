@@ -39,7 +39,7 @@ export function Home() {
         <Logo size={150} />
         <div className="hero-wheel"><WheelCanvas wheel={WHEELS.blasone} target={null} idleSpin hub="⚽" /></div>
         <p className="muted" style={{ maxWidth: 420, margin: "0 auto 18px" }}>
-          Il club lo decidono le ruote. Tu lo porti dalla Serie B alla gloria, decidendo nei momenti che contano.
+          Club o campione: lo decidono le ruote. Tu decidi nei momenti che contano.
         </p>
       </div>
 
