@@ -432,6 +432,7 @@ function EndStep({ s, mutate }: StepProps) {
           {r.clRound && <div className="r"><span>Champions League</span><span>{r.clRound}</span></div>}
           <div className="r"><span>Obiettivo «{r.goal ?? "—"}»</span><span>{r.goalOk ? "✓ centrato" : "✗ mancato"}</span></div>
           <div className="r"><span>Valutazione</span><span><strong>{r.ovrBefore} → {r.ovrAfter}</strong> ({delta >= 0 ? "+" : ""}{delta})</span></div>
+          {r.trend && <div className="r"><span>Andamento</span><span>{r.trend}</span></div>}
           <div className="r"><span>Pallone d'Oro</span><span>{r.ballonRank <= 30 ? `${r.ballonRank}° posto` : "fuori dai 30"}</span></div>
           {s.p.role === "ATT" && <div className="r"><span>Capocannoniere del campionato</span><span>{r.topRival} gol</span></div>}
           {r.roleAward && <div className="r"><span>{r.roleAward.name.replace(/ (Premier League|LaLiga|Serie A|Bundesliga|Ligue 1|Eredivisie|Liga Portugal|.+)$/, "")}</span><span>{r.roleAward.won ? "🏆 tuo!" : `vince chi ha ${r.roleAward.rival}`}</span></div>}

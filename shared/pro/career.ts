@@ -731,7 +731,7 @@ export function endSeason(s: ProState, rng: Rng) {
     : role === "DIF" ? st.cs * 0.45 + (st.rec ?? 0) * 0.02 + st.goals * 0.5 + st.assists * 0.3
     : st.cs * 0.75 + (st.saves ?? 0) * 0.04;
   const score = s.p.ovr * 1.4 + prod + avg * (role === "ATT" ? 5 : role === "CEN" ? 5.5 : 6) + (pos === 1 ? 6 : 0) + (clRound === "Vincitore" ? 12 : clRound === "Finale" ? 6 : 0) + (topScorer || roleAward?.won ? 4 : 0) + LEAGUES[league].stars * 2;
-  const rivals = [212, 206, 201, 197, 193, 190, 187, 184, 181, 178].map((x) => x + (rng.next() - 0.5) * 14);
+  const rivals = [216, 210, 205, 200, 196, 192, 189, 186, 183, 180].map((x) => x + (rng.next() - 0.5) * 14);
   let ballonRank = rivals.filter((x) => x > score).length + 1;
   if (ballonRank > 10) ballonRank = 11 + Math.floor((Math.min(...rivals) - score) / 2.5);
   if (st.apps < 12) ballonRank = 99;
@@ -758,18 +758,28 @@ export function endSeason(s: ProState, rng: Rng) {
   const before = s.p.ovr;
   const age = s.p.age;
   const share = clampN(st.minutes / (totalRounds(s) * 90), 0, 1);
-  const ageF = age <= 19 ? 5 : age <= 21 ? 4 : age <= 23 ? 3 : age <= 26 ? 1.5 : age <= 29 ? 0.3 : age <= 31 ? -1 : age <= 33 ? -2.2 : -3.6;
-  let delta = ageF * (age < 27 ? clampN((s.p.pot - s.p.ovr) / 11, 0, 1.1) : 1) * (0.3 + 0.9 * share) + (avg ? (avg - 6.3) * 1.2 : -0.5) + (rng.next() - 0.5) * 2;
+  // curva di crescita: veloce da ragazzo, picco tra 25 e 28 anni, poi calo graduale
+  const base = age <= 18 ? 2.8 : age <= 20 ? 2.5 : age <= 22 ? 2.1 : age <= 24 ? 1.7 : age <= 26 ? 1.2 : age === 27 ? 0.6 : age <= 29 ? 0 : age <= 31 ? -1.2 : age <= 33 ? -2 : -3.2;
   const gf = fx(s.p);
-  if (age <= 23) delta += gf.grow; else delta += gf.grow * 0.3;
-  if (delta < 0) delta *= gf.age;
-  if (s.p.traits.includes("_extra")) { delta += 1; s.p.traits = s.p.traits.filter((t) => t !== "_extra"); }
-  if (s.p.character === "Professionista" && age >= 29) delta += 0.6;
-  if (goalOk) delta += 0.7;
-  let newOvr = Math.round(before + delta);
-  if (delta > 0) newOvr = Math.min(newOvr, Math.max(before, s.p.pot));
-  s.p.ovr = clampN(newOvr, 40, 97);
+  const gap = s.p.pot - before;
+  let planned = base > 0 ? base * clampN(gap / 9, 0, 1.25) * (0.45 + 0.75 * share) : base;
+  if (planned > 0) planned += age <= 23 ? gf.grow : gf.grow * 0.3;
+  if (planned < 0) planned *= gf.age * (s.p.character === "Professionista" ? 0.75 : 1) * (s.p.stamina >= 4 ? 0.85 : 1);
+  // rendimento: una grande stagione fa crescere anche da maturo, la panchina fa perdere colpi
+  let perf = avg ? (avg - 6.4) * 1.0 : -0.6;
+  if (age >= 22 && share < 0.3) perf -= 0.8;
+  if (goalOk) perf += 0.6;
+  if (s.p.traits.includes("_extra")) { perf += 1; s.p.traits = s.p.traits.filter((t) => t !== "_extra"); }
+  const noise = (rng.next() - 0.5) * (age >= 27 && age <= 30 ? 2.2 : 1.6);
   const notes: string[] = [];
+  // esploso tardivo: un'annata straordinaria alza il tetto
+  if (age >= 21 && age <= 27 && avg >= 7.0 && st.apps >= 20 && rng.chance(0.12)) { s.p.pot += rng.int(2, 3); notes.push("Esploso tardivo: questa stagione ti ha fatto fare un salto di qualità."); }
+  let target = before + Math.min(planned, Math.max(0, s.p.pot - before)) + perf + noise;
+  // oltre il potenziale si va solo con le prestazioni, e al massimo di 2 punti
+  target = Math.min(target, Math.max(before, s.p.pot + 2));
+  const newOvr = Math.round(target);
+  s.p.ovr = clampN(newOvr, 40, 97);
+  const trend = age <= 25 && s.p.ovr < s.p.pot - 2 ? "Stai ancora crescendo." : age <= 29 ? "Sei nel pieno della maturità." : age <= 32 ? "Il fisico inizia a calare: l'esperienza compensa." : "Gli anni si fanno sentire.";
   if (age >= 29 && s.p.speed > 1 && rng.chance(0.3 * gf.age)) { s.p.speed--; notes.push("Perdi un po' di velocità con gli anni."); }
 
   // club: forza che cambia un po' ogni anno
@@ -783,7 +793,7 @@ export function endSeason(s: ProState, rng: Rng) {
   s.lastTables = tables;
   s.report = {
     year: s.year, age, pos, n: myTable.length, league: lname, clRound: inCL ? clRound || "Ottavi" : null, trophies, avg, stats: { ...st },
-    ovrBefore: before, ovrAfter: s.p.ovr, ballonRank, topRival, roleAward, natLine, goal: g?.label ?? null, goalOk, notes, tables,
+    ovrBefore: before, ovrAfter: s.p.ovr, ballonRank, topRival, roleAward, natLine, goal: g?.label ?? null, goalOk, notes, tables, trend,
   };
   s.contractYears--;
   s.phase = "end";
